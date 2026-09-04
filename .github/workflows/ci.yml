@@ -19,6 +19,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # go-potion downloads (~125MB) into the user cache on first use.
+      # bump version when changing default model
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-potion
+          key: v1
+
       - name: Build
         run: go build ./...
 
