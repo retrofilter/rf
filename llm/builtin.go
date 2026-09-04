@@ -77,7 +77,7 @@ func (c *Chat) completionWithModel(model, system, prompt string) (string, error)
 
 func (c *Chat) registerLLMBuiltin() {
 	eval.Register("llm", "one plain LLM completion — the piped value threads in as context",
-		eval.CommandMeta{Stage: true, Instruction: true})
+		eval.CommandMeta{Command: true, Stage: true, Instruction: true, MinArgs: 1, MaxArgs: -1, Usage: "instruction ..."})
 	c.Env.Set("llm", eval.BuiltinFunc(func(args []eval.Value, env *eval.Environment) (eval.Value, error) {
 		if len(args) == 0 {
 			return nil, fmt.Errorf("llm requires a prompt: (llm \"instruction\" [context ...])")

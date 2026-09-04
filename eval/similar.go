@@ -211,7 +211,9 @@ func rankOptions(op string, opts map[string]Value) (key string, limit int, err e
 func similarBuiltins(env *Environment, approval *approvalGate) {
 	env.Set("embedding-model", String(defaultPotionModel))
 
-	env.SetBuiltin("embed", "a text's embedding vector as a list of numbers", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
+	Register("embed", "a text's embedding vector as a list of numbers", CommandMeta{
+		Command: true, MinArgs: 1, MaxArgs: 1, Usage: "\"text\""})
+	env.Set("embed", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
 		if len(args) != 1 {
 			return nil, errors.New("embed expects one string: (embed \"text\")")
 		}

@@ -86,7 +86,9 @@ Rankers score lines or rows against a query: `bm25` (keyword), `similar`
 (local embeddings — no API call), `hybrid` (both, fused), and `rerank`
 (the model, listwise). `llm-map` and `classify` run a prompt over every
 item in batches: `history | take 50 | classify "bug-fix or feature?" |
-count-by label`.
+count-by label`. `llm` is one plain completion — `llm write a haiku`
+standalone, or `git diff | llm summarize` with the piped value as
+context — and `embed "text"` prints the local embedding vector.
 
 Streams are lazy and single-use: `(take 2 (sh "yes"))` kills `yes` after
 two lines, and a stream you hold in a variable can be read once. Results

@@ -85,6 +85,11 @@ func TestAgentBuiltinTopLevel(t *testing.T) {
 	s.expect(`SUBAGENT-REPLY done\.`)
 	s.expectNot(`command not found`)
 
+	s.clear()
+	s.sendLine(`llm "write a poem"`)
+	s.expect(`SUBAGENT-REPLY done\.`)
+	s.expectNot(`command not found`)
+
 	home := dir
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
 		home = resolved

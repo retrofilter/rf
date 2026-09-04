@@ -39,6 +39,7 @@ in as the last argument.
 | delete-tree |  | remove a project worktree |
 | dir |  | list a directory as rows, ls under a non-shadowing name |
 | edges |  | list a graph's edges as id/source/target/type rows |
+| embed |  | a text's embedding vector as a list of numbers |
 | fetch |  | fetch an http(s) url, body as a line stream |
 | fg |  | resume the most recently stopped job in the foreground (user-only) |
 | from-csv | ✓ | parse CSV into rows — from-csv data.csv --sep ";" |
@@ -51,6 +52,7 @@ in as the last argument.
 | inspect |  | show a definition's source, reconstructed from the live closure |
 | job |  | start a background command, returning a handle — -s polls, -w joins, -o peeks at output, -k stops; --in delays it, --every reruns it |
 | jobs |  | stopped, background, and job-builtin children as rows |
+| llm | ✓ | one plain LLM completion — the piped value threads in as context |
 | llm-map | ✓ | map an LLM instruction over items, replies as a new llm column — history \| take 20 \| llm-map "one-line summary" |
 | messages |  | search chat messages across rf and Claude Code sessions |
 | neighbors |  | a node's neighboring nodes as rows with a direction column |
@@ -94,7 +96,6 @@ Valid after a `|` but not as a line's first word.
 | json | serialize a value as JSON lines |
 | keys | a dictionary's keys |
 | length | the number of elements |
-| llm | one plain LLM completion — the piped value threads in as context |
 | string-downcase | lowercase a string (full Unicode case mapping) |
 | string-upcase | uppercase a string (full Unicode case mapping) |
 | table | render rows as an aligned table string |
@@ -237,7 +238,6 @@ presence, callable with parens in any mode; `help <name>` at the prompt.
 | display | print a value's content form: (display obj [port]) |
 | do | loop: (do ((var init step)...) (test result...) body...) |
 | dynamic-wind | run thunk between before/after thunks; after runs even on unwinds |
-| embed | a text's embedding vector as a list of numbers |
 | emergency-exit | terminate the shell process immediately (user-only) |
 | env | the environment as rows, or one variable's value (:redact masks secrets) |
 | environment | the environment named by import sets — the shared global env under rf's thin library design |
@@ -715,6 +715,15 @@ scheme: (edges [{:type TYPE :graph NAME :limit N}])
   -h, --help        this help
 ```
 
+### embed
+
+```
+embed — a text's embedding vector as a list of numbers
+
+usage:  embed "text"
+scheme: (embed "text")
+```
+
 ### fetch
 
 ```
@@ -852,6 +861,15 @@ jobs — stopped, background, and job-builtin children as rows
 
 usage:  jobs
 scheme: (jobs)
+```
+
+### llm
+
+```
+llm — one plain LLM completion — the piped value threads in as context
+
+usage:  llm instruction ...
+scheme: (llm instruction ...)
 ```
 
 ### llm-map
