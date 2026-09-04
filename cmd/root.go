@@ -16,8 +16,8 @@ var evalPrelude bool
 
 var rootCmd = &cobra.Command{
 	Use:   "rf [script.scm [args...]]",
-	Short: "retrofilter: AI-powered Scheme shell over a local property graph",
-	Long:  `retrofilter: AI-powered Scheme shell over a local property graph. Lines starting with '(' eval as Scheme, Ctrl+Space toggles between command and agent mode. With a file argument, evaluates the file and exits; further arguments reach the script via (command-line). With -e, evaluates one form against the shared database and exits.`,
+	Short: "retrofilter - a programmable, persistent shell",
+	Long:  `retrofilter - a programmable, persistent shell. Lines starting with '(' eval as Scheme, Ctrl+Space toggles between command and agent mode. With a file argument, evaluates the file and exits; further arguments reach the script via (command-line). With -e, evaluates one form against the shared database and exits.`,
 	Args:  cobra.ArbitraryArgs,
 	// --version prints Version() (cmd/version.go): tag, commit, platform.
 	Version: Version(),
