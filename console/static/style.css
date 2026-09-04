@@ -1,0 +1,677 @@
+/* Retrofilter Console — pixel-per tmp/design_handoff_retrofilter_console.
+   Light warm-neutral panels, hairline borders, one monospace face everywhere:
+   Hack, bundled as a webfont so every machine renders alike (symbols Hack
+   lacks — ✳, ⏺, … — fall back per-glyph to system fonts), plain system
+   monospace behind it. Blue structural accent, cherry red reserved for
+   quota pressure + the running blip.
+
+   Every color lives in a token here; the dark theme is the same tokens
+   re-valued on :root[data-theme="dark"] (set before first paint by the head
+   script in ui.templ, toggled by the status-bar sun button, persisted as
+   localStorage "rf-theme" — absent means light, the default). The xterm and
+   graph-canvas ramps can't come from CSS, so term.js/graph.js carry matching
+   One Light / One Dark palettes keyed off the same data-theme attribute. */
+
+/* Source Serif 4 (variable, roman + italic) — the microsite's UI voice,
+   used for the chrome's human-readable text: the user@host title, the
+   rail's "Sessions" header and description lines, the harness label, and
+   the overview's task prose. Machine text — session names, tabs, paths,
+   counts, and everything inside the terminal — stays mono. */
+/* Hack (regular + bold) — the mono voice, self-hosted; the terminal, the
+   chrome, and the graph canvas all use it. No italic face is bundled: the
+   browser synthesizes an oblique for terminal italics. */
+@font-face {
+  font-family: 'Hack';
+  src: url('/static/fonts/hack-regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Hack';
+  src: url('/static/fonts/hack-bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('/static/fonts/SourceSerif4-var.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('/static/fonts/SourceSerif4-var-italic.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
+:root {
+  --serif: 'Source Serif 4', Charter, Georgia, serif;
+  --desk: #EDEDEA;
+  --panel: #F8F8F6;
+  --terminal: #FAFAFA; /* matches the xterm One Light background */
+  --terminal-fg: #383A42;
+  --terminal-muted: #696C77;
+  --terminal-red: #E45649; /* errors on the terminal surface */
+  --row-selected: #F1F1EE;
+  --border: #DEDEDA;
+  --divider: #EAEAE6;
+  --track: #E4E4E0;
+  --ink: #2A2A26;
+  --ink-contrast: #FDFDFC; /* text on --ink blocks: the title, the active tab */
+  --ink-2: #373732;
+  --ink-3: #474742;
+  --muted: #55554F;
+  --muted-2: #5C5C55;
+  --muted-3: #6E6E66;
+  --muted-4: #78786F;
+  --accent: #2E4A7D;
+  --cherry: #D11A2A;
+  --green: #5E7A55;
+  --yellow: #9A7B2E;
+  --red: #B03A2E;
+  --tab-x-active: #8B8B86;
+  --scroll-thumb: #C6C6C0;
+}
+
+/* One Dark counterpart: cool dark panels, the terminal on One Dark's #282C34.
+   --ink flips to a light gray, so the title block and active tab render as a
+   light block with dark text — the same "inverted block" read as light mode. */
+:root[data-theme="dark"] {
+  --desk: #1C1F24;
+  --panel: #21252B;
+  --terminal: #282C34; /* matches the xterm One Dark background */
+  --terminal-fg: #ABB2BF;
+  --terminal-muted: #7F848E;
+  --terminal-red: #E06C75;
+  --row-selected: #2C313A;
+  --border: #363C46;
+  --divider: #2F343D;
+  --track: #3A4049;
+  --ink: #D7DAE0;
+  --ink-contrast: #21252B;
+  --ink-2: #C9CDD4;
+  --ink-3: #B9BEC7;
+  --muted: #9DA5B4;
+  --muted-2: #949CAB;
+  --muted-3: #7F8796;
+  --muted-4: #6E7686;
+  --accent: #61AFEF;
+  --cherry: #E06C75;
+  --green: #98C379;
+  --yellow: #E5C07B;
+  --red: #E06C75;
+  --tab-x-active: #6A7080;
+  --scroll-thumb: #3E4451;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Hack', ui-monospace, monospace;
+  color: var(--ink-2);
+  background: var(--desk);
+}
+
+#shell {
+  /* 100% (via html/body), not 100vh: vh ignores classic scrollbars, so when
+     min-width forces a horizontal bar the page also overflows vertically by
+     the bar's thickness and both scrollbars show. Percentages resolve
+     against the real client area. */
+  height: 100%;
+  min-height: 720px;
+  min-width: 1280px;
+  padding: 14px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- status bar (bottom of the page — laptop screens are short, so the
+   terminal input line sits higher with the chrome below it) ---- */
+
+#hdr {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* The bar matches the tab strip's height: same padding and type scale as a
+   tab, with the title block styled like the active tab. */
+/* The title block in the serif voice, regular weight. Serif runs a touch
+   over the mono size to match x-height. */
+#title {
+  background: var(--ink);
+  color: var(--ink-contrast);
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: .01em;
+  line-height: 1;
+}
+
+#hdr-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 11px;
+  letter-spacing: .02em;
+  color: var(--muted);
+  padding: 0 8px 0 0;
+}
+#hdr-status > * { flex-shrink: 0; white-space: nowrap; }
+.stat { display: flex; align-items: center; gap: 8px; }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+@keyframes blip { 0%, 100% { opacity: 1 } 50% { opacity: .25 } }
+.blip { background: var(--accent); animation: blip 1.6s infinite; }
+
+.quota { display: flex; align-items: center; gap: 10px; }
+.quota .track { width: 100px; height: 8px; background: var(--track); }
+.quota .fill { display: block; height: 8px; background: var(--cherry); width: 0%; }
+.quota .pct { color: var(--cherry); font-weight: 700; }
+.quota .dim { color: var(--muted-4); }
+
+/* Host mem bar: same anatomy as the quota bars but structural blue —
+   cherry stays reserved for subscription pressure. */
+.quota.sys .fill { background: var(--accent); }
+.quota.sys .pct { color: var(--accent); }
+
+/* ---- main grid ---- */
+
+main {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+/* ---- shell rail ---- */
+
+#rail {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+#rail-hdr {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  line-height: 13px; /* same line box as .tab — rail header and tab strip match heights exactly */
+  font-size: 11px;
+  letter-spacing: .02em;
+  color: var(--muted-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+/* The rail's header label in the serif voice — roman, not italic; 13px
+   matches the title block and the harness label. */
+#rail-hdr .rail-label {
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: .01em;
+  line-height: 1;
+}
+#session-count { color: var(--accent); }
+
+#session-list { overflow: auto; min-height: 0; }
+
+.session-row {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--divider);
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: inset 3px 0 0 transparent;
+}
+.session-row:hover { background: var(--row-selected); }
+.session-row.selected {
+  background: var(--row-selected);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+.session-row .line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.session-row .name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.session-row .status {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: .14em;
+  flex-shrink: 0;
+}
+
+/* The description line below the session name, in the serif voice. */
+.session-row .task {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 15px;
+}
+
+.session-row .meta {
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--muted-4);
+  padding-left: 15px;
+}
+.session-row .meta .diff { margin-left: auto; color: var(--muted-2); }
+
+.st-RUNNING { color: var(--accent); }
+.st-BLOCKED { color: var(--yellow); }
+.st-REVIEW { color: var(--green); }
+.st-IDLE { color: var(--muted-4); }
+.st-SCHEDULED { color: var(--muted-2); }
+.bg-RUNNING { background: var(--accent); }
+.bg-BLOCKED { background: var(--yellow); }
+.bg-REVIEW { background: var(--green); }
+.bg-IDLE { background: var(--muted-4); }
+/* A hollow dot: the session doesn't exist yet. */
+.bg-SCHEDULED { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted-2); }
+
+/* A scheduled row is a listing, not a session to attach to. */
+.session-row.scheduled { cursor: default; }
+.session-row.scheduled:hover { background: transparent; }
+
+/* ---- terminal panel ---- */
+
+#term-panel {
+  border: 1px solid var(--border);
+  background: var(--terminal);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#tabs {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0; /* an overflowing view below must not compress the tab strip */
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  min-width: 0;
+  overflow-x: auto; /* load-bearing: without it the tabs floor the column width */
+}
+.tab {
+  padding: 9px 16px;
+  /* same type as the shell names in the rail; the 13px line box pins the
+     strip to the exact height of the rail header and title block (9px
+     vertical padding + 13px line everywhere) */
+  font-size: 12px;
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  color: var(--muted-3);
+  display: flex;
+  align-items: center;
+}
+.tab.active {
+  background: var(--ink);
+  color: var(--ink-contrast);
+}
+/* The home icon reads too faint at muted grey — keep it ink when inactive. */
+.tab-overview:not(.active) { color: var(--ink); }
+
+/* The big new-session "+" rides just right of the tab strip (term-status's
+   margin-left: auto keeps it from drifting to the far edge). */
+#tab-new {
+  padding: 0 14px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--muted-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+#tab-new:hover { color: var(--ink); }
+
+/* The status bar's far-right corner holds the two icon buttons side by side:
+   the graph opener (opens or re-selects the closable graph-view tab) and the
+   theme toggle — a quiet sun in light mode, a moon in dark; clicking flips
+   the data-theme attribute (see term.js). Both toggle icons ship in the
+   markup; the theme picks which one shows. */
+#graph-open,
+#theme-toggle {
+  padding: 0 8px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+#graph-open:hover { background: var(--row-selected); }
+#theme-toggle:hover { background: var(--row-selected); }
+#theme-toggle .icon-moon { display: none; }
+[data-theme="dark"] #theme-toggle .icon-sun { display: none; }
+[data-theme="dark"] #theme-toggle .icon-moon { display: block; }
+
+/* Every tab except home closes: sessions hang up (the mouse spelling of
+   Ctrl-D), the graph tab just closes, the pending naming tab cancels. */
+.tab-x {
+  margin-left: 9px;
+  color: var(--muted-4);
+  font-weight: 400;
+}
+.tab-x:hover { color: var(--cherry); }
+.tab.active .tab-x { color: var(--tab-x-active); }
+.tab.active .tab-x:hover { color: var(--ink-contrast); }
+
+.tab-graph svg { margin-right: 7px; }
+
+#term-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: var(--muted-2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* The harness label ("Claude"/"rf" as agent) in the serif voice; 13px
+   matches the title block and the rail's "Sessions" header. */
+#ts-harness {
+  padding: 0 0 0 8px;
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: .01em;
+}
+
+@media (max-width: 1280px) {
+  #term-status, #hdr-status { display: none !important; }
+}
+
+#term-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 14px 16px;
+}
+
+/* The fit addon measures the terminal's direct parent, and with border-box
+   sizing a padded parent reads too tall — the bottom row would land under
+   the clip. The mount carries no padding, so its measured size is exactly
+   the terminal's. */
+#term-mount {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* xterm.css uses `overflow-y: scroll`, which keeps a track visible whenever
+   macOS renders scrollbars persistently — hide it; the wheel scrolls the
+   (now fully native) scrollback regardless. */
+#term-mount .xterm-viewport {
+  scrollbar-width: none;
+}
+#term-mount .xterm-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ---- new-session view ---- */
+
+/* Replaces the terminal while naming a session; set in the terminal's own
+   type so the panel reads as one surface. The prompt line is centered in the
+   panel, and the cursor is a terminal-style block in the terminal foreground
+   (the native caret is hidden; JS sizes the input to its content so the
+   block hugs the text). */
+#new-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--terminal-fg);
+  background: var(--terminal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#new-view[hidden] { display: none; }
+/* The htmx form is layout-transparent: #new-view's flex centering applies
+   straight to .nv-box. */
+#nv-form { display: contents; }
+.nv-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
+/* No flex gap: the block cursor must sit flush against the typed text, so
+   the prompt carries its own trailing space instead. */
+.nv-line { display: flex; align-items: center; }
+.nv-prompt { color: var(--terminal-muted); flex-shrink: 0; margin-right: 1ch; }
+#nv-name {
+  width: 0;
+  min-width: 1px;
+  font: inherit;
+  color: var(--terminal-fg);
+  background: transparent;
+  border: none;
+  outline: none;
+  caret-color: transparent;
+  padding: 0;
+}
+.nv-cursor {
+  width: 1ch;
+  height: 1.15em;
+  background: var(--terminal-fg);
+  flex-shrink: 0;
+}
+#nv-error { color: var(--terminal-red); min-height: 16px; }
+.nv-hint { color: var(--terminal-muted); font-size: 11px; }
+
+/* ---- overview (projects & tasks — the landing view) ---- */
+
+/* Replaces the terminal like the naming view does, but reads as a listing:
+   left-aligned, scrollable, terminal-set. Rows are startable; term.js moves
+   .selected with the arrow keys, and enter/click spawns the session. */
+#overview-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 26px;
+  font-size: 13px;
+  color: var(--terminal-fg);
+  background: var(--terminal);
+}
+#overview-view[hidden] { display: none; }
+#overview-view { scrollbar-width: none; }
+#overview-view::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.ov-box { max-width: 760px; display: grid; gap: 18px; }
+.ov-project { display: grid; gap: 2px; }
+.ov-row { cursor: pointer; }
+.ov-phead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 10px;
+  box-shadow: inset 3px 0 0 transparent;
+}
+.ov-pname { font-weight: 700; letter-spacing: .02em; }
+.ov-ppath { color: var(--terminal-muted); font-size: 11px; }
+.ov-count { margin-left: auto; color: var(--terminal-muted); font-size: 11px; flex-shrink: 0; }
+.ov-task {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px 4px 26px;
+  box-shadow: inset 3px 0 0 transparent;
+  min-width: 0;
+}
+.ov-arrow { color: var(--terminal-muted); flex-shrink: 0; }
+.ov-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Task text reads as prose — the serif voice; names, paths, counts stay mono. */
+.ov-task .ov-text { font-family: var(--serif); font-size: 15px; }
+.ov-row:hover { background: var(--row-selected); }
+.ov-row.selected {
+  background: var(--row-selected);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+/* .ov-task's display:flex would override the UA sheet's [hidden] rule
+   (author beats UA regardless of specificity), so collapsed overflow rows
+   need hiding restated. */
+.ov-task[hidden] { display: none; }
+.ov-more { padding-left: calc(26px + 1ch + 8px); }
+.ov-more .ov-text { color: var(--terminal-muted); }
+.ov-done { padding-left: calc(26px + 1ch + 8px); }
+.ov-done .ov-text { color: var(--terminal-muted); text-decoration: line-through; }
+.ov-unfiled .ov-pname { color: var(--terminal-muted); font-weight: 400; }
+.ov-empty { color: var(--terminal-muted); padding: 4px 10px; }
+.ov-code { color: var(--terminal-fg); }
+.ov-hint { color: var(--terminal-muted); font-size: 11px; padding: 6px 10px 0; }
+
+/* ---- graph view (the knowledge-base graph on a canvas) ---- */
+
+/* Replaces the terminal like the overview does. The header strip carries the
+   stats line and the type legend; the body splits into the canvas host and
+   the node detail panel graph.js opens on selection. */
+#graph-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--terminal);
+  color: var(--terminal-fg);
+  font-size: 12px;
+}
+#graph-view[hidden] { display: none; }
+
+#graph-hdr {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 11px;
+  color: var(--terminal-muted);
+  flex-shrink: 0;
+  min-width: 0;
+}
+#graph-legend {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.gl-chip { display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+.gl-chip.off { opacity: .35; }
+.gl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.gl-count { color: var(--terminal-muted); }
+
+#graph-body { flex: 1 1 auto; min-height: 0; display: flex; }
+
+#graph-canvas-host { flex: 1 1 auto; min-width: 0; position: relative; }
+#graph-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#graph-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--terminal-muted);
+  font-size: 13px;
+}
+#graph-empty[hidden] { display: none; }
+#graph-hint {
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  color: var(--terminal-muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* ---- node detail panel ---- */
+
+#graph-side {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--divider);
+  overflow: auto;
+  padding: 14px 16px;
+  scrollbar-width: none;
+}
+#graph-side::-webkit-scrollbar { width: 0; height: 0; display: none; }
+#graph-side[hidden] { display: none; }
+
+.gs-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.gs-head .gl-dot { width: 9px; height: 9px; }
+.gs-type { color: var(--terminal-muted); font-size: 11px; letter-spacing: .08em; }
+.gs-id { margin-left: auto; color: var(--terminal-muted); font-size: 11px; }
+.gs-label { font-weight: 700; margin-bottom: 12px; overflow-wrap: break-word; }
+
+.gs-section { color: var(--terminal-muted); font-size: 10px; letter-spacing: .14em; margin: 14px 0 6px; }
+.gs-props { display: grid; grid-template-columns: minmax(60px, auto) 1fr; gap: 3px 12px; font-size: 11px; }
+.gs-key { color: var(--terminal-muted); overflow-wrap: break-word; }
+.gs-val { overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.gs-edge {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  cursor: pointer;
+  font-size: 11px;
+  min-width: 0;
+}
+.gs-edge:hover { background: var(--row-selected); }
+.gs-edge .gs-etype { color: var(--terminal-muted); flex-shrink: 0; }
+.gs-edge .gs-etext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-none { color: var(--terminal-muted); font-size: 11px; }

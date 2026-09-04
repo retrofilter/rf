@@ -1,0 +1,499 @@
+package console
+
+// The console UI, server-rendered. One full page (page) plus the fragment
+// htmx polls every 2s (pollFragment): the rail rows are the main swap, and
+// everything else that changes — tabs, counts, the harness label, the usage
+// bars — rides along as hx-swap-oob elements, so one request updates the
+// whole chrome. The browser owns only what a server can't: which session the
+// xterm is attached to, and whether the new-session view is open. term.js
+// echoes that state back on every poll (hx-vals), and the server answers
+// with rendered selection plus HX-Trigger events (rf:select / rf:shownew /
+// rf:detached) telling term.js when to act.
+
+import "strconv"
+import "time"
+
+templ page(m viewModel) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<title>{ m.Whoami }</title>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			// The retrofilter.com favicon: the 𝑟𝑓 monogram as an inline SVG,
+			// dark-aware via the OS theme (a favicon can't see data-theme).
+			<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cstyle%3Etext%7Bfill:%23131313%7D@media(prefers-color-scheme:dark)%7Btext%7Bfill:%23ECEAE2%7D%7D%3C/style%3E%3Ctext x='32' y='47' text-anchor='middle' font-size='46' font-family='Georgia,serif'%3E%F0%9D%91%9F%F0%9D%91%93%3C/text%3E%3C/svg%3E"/>
+			<link rel="stylesheet" href="/static/vendor/xterm.css"/>
+			<link rel="stylesheet" href="/static/style.css"/>
+			// The saved theme must land on <html> before the first paint or a
+			// dark reload flashes light. Absent key = light, the default;
+			// term.js owns the toggle and keeps localStorage in sync.
+			<script>
+				if (localStorage.getItem('rf-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+			</script>
+			<script src="/static/vendor/htmx.min.js" defer></script>
+			<script src="/static/vendor/xterm.js" defer></script>
+			<script src="/static/vendor/addon-fit.js" defer></script>
+			<script src="/static/graph.js" defer></script>
+			<script src="/static/term.js" defer></script>
+		</head>
+		<body>
+			<div id="shell">
+				<main>
+					<section id="rail">
+						<div id="rail-hdr">
+							<span class="rail-label">Sessions</span>
+							<span id="session-count">{ strconv.Itoa(len(m.Sessions)) }</span>
+						</div>
+						<div
+							id="session-list"
+							hx-get="/ui/poll"
+							hx-trigger="load, every 2s, rf:refresh from:body"
+							hx-vals="js:{active: RF.active || '', view: RF.view, graph: RF.graphOpen ? '1' : ''}"
+							hx-swap="innerHTML"
+						>
+							@railRows(m)
+						</div>
+					</section>
+					<section id="term-panel">
+						<div id="tabs">
+							<div id="tab-list" style="display: contents">
+								@tabItems(m)
+							</div>
+							<button id="tab-new" type="button" title="new session (⌘K)">+</button>
+							<div id="term-status">
+								<span id="ts-harness">
+									@harnessText(m)
+								</span>
+							</div>
+						</div>
+						<div id="term-host"><div id="term-mount"></div></div>
+						<div id="new-view" hidden>
+							@newSessionForm()
+						</div>
+						<div id="overview-view" hidden>
+							<div id="ov-body" hx-get="/ui/overview" hx-trigger="rf:overview from:body"></div>
+						</div>
+						@graphView()
+					</section>
+				</main>
+				<footer id="hdr">
+					<div id="title">{ m.Whoami }</div>
+					<div id="hdr-status">
+						<span class="stat">
+							<span class="dot blip"></span>
+							<span id="running-count">{ strconv.Itoa(m.runningCount()) } Running</span>
+						</span>
+						@sysBars(m)
+						@usageBars(m)
+					</div>
+					<button id="graph-open" type="button" title="knowledge-base graph">
+						@graphIcon(16)
+					</button>
+					<button id="theme-toggle" type="button" title="toggle light/dark theme">
+						@sunIcon(16)
+						@moonIcon(16)
+					</button>
+				</footer>
+			</div>
+		</body>
+	</html>
+}
+
+// loginLogo is the shell splash's rf glyphs (printSplash, cmd/render.go),
+// sans the taglines — the one bit of identity on the sign-in page.
+const loginLogo = `        __
+  _ __ / _|
+ | '__| |_
+ | |  |  _|
+ |_|  |_|`
+
+// The sign-in page — the one unauthenticated response, styled after the
+// new-session view. Deliberately self-contained: /static sits behind auth,
+// so the styles are inline (system mono stands in for the Hack webfont) and
+// the only theming input is the same localStorage key the console uses,
+// falling back to the OS scheme. Nothing dynamic renders pre-auth — no
+// whoami, no fleet — and the token travels in the POST body, never a URL.
+templ loginPage(errMsg string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<title>sign in</title>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<style>
+				:root { --desk: #EDEDEA; --terminal-fg: #383A42; --terminal-muted: #696C77; --terminal-red: #E45649; --accent: #2E4A7D; }
+				:root[data-theme="dark"] { --desk: #1C1F24; --terminal-fg: #ABB2BF; --terminal-muted: #7F848E; --terminal-red: #E06C75; --accent: #61AFEF; }
+				@media (prefers-color-scheme: dark) {
+					:root:not([data-theme="light"]) { --desk: #1C1F24; --terminal-fg: #ABB2BF; --terminal-muted: #7F848E; --terminal-red: #E06C75; --accent: #61AFEF; }
+				}
+				* { box-sizing: border-box; margin: 0; padding: 0; }
+				html, body { height: 100%; }
+				body {
+					font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+					font-size: 13px;
+					color: var(--terminal-fg);
+					background: var(--desk);
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				}
+				.lg-box { display: grid; gap: 10px; justify-items: center; text-align: center; }
+				.lg-logo { font: inherit; color: var(--accent); line-height: 1.25; text-align: left; margin-bottom: 6px; }
+				.lg-line { display: flex; align-items: center; }
+				.lg-prompt { color: var(--terminal-muted); flex-shrink: 0; margin-right: 1ch; }
+				#lg-token {
+					width: 40ch;
+					max-width: 60vw;
+					font: inherit;
+					color: var(--terminal-fg);
+					caret-color: var(--terminal-fg);
+					background: transparent;
+					border: none;
+					outline: none;
+					padding: 0;
+					/* Masked via CSS on a text input rather than type="password":
+					   password managers then never engage — no fill prompt on
+					   click, no save prompt on submit — which is right for a
+					   token that rotates weekly. Pre-136 Firefox shows the
+					   pasted token in the clear; acceptable on a page only its
+					   owner visits. */
+					-webkit-text-security: disc;
+				}
+				.lg-error { color: var(--terminal-red); min-height: 16px; }
+				.lg-hint { color: var(--terminal-muted); font-size: 11px; }
+			</style>
+			<script>
+				if (localStorage.getItem('rf-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+			</script>
+		</head>
+		<body>
+			<form method="post" action="/login" autocomplete="off">
+				<div class="lg-box">
+					<pre class="lg-logo">{ loginLogo }</pre>
+					<div class="lg-line">
+						<span class="lg-prompt">token ❯</span>
+						<input id="lg-token" name="token" type="text" autofocus autocomplete="off" autocapitalize="off" spellcheck="false"/>
+					</div>
+					<div class="lg-error">{ errMsg }</div>
+					<div class="lg-hint">run <b>rf token</b> in a shell on the host to print it · enter signs in</div>
+				</div>
+			</form>
+		</body>
+	</html>
+}
+
+// The naming view that replaces the terminal (also the empty state — nothing
+// ever auto-spawns). Enter submits through htmx; hx-sync drops re-submits
+// while a spawn is in flight (the double-enter guard). Validation errors land
+// in #nv-error; success answers with an rf:select trigger that term.js turns
+// into an attach.
+templ newSessionForm() {
+	<form
+		id="nv-form"
+		hx-post="/ui/sessions"
+		hx-target="#nv-error"
+		hx-swap="innerHTML"
+		hx-sync="this:drop"
+		autocomplete="off"
+	>
+		<div class="nv-box">
+			<div class="nv-line">
+				<span class="nv-prompt">new session ❯</span>
+				<input id="nv-name" name="name" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="48"/>
+				<span class="nv-cursor"></span>
+			</div>
+			<div id="nv-error"></div>
+			<div class="nv-hint">enter creates · esc cancels · [a-zA-Z0-9_-]</div>
+		</div>
+	</form>
+}
+
+// errorText renders a spawn failure into #nv-error.
+templ errorText(msg string) {
+	{ msg }
+}
+
+// The overview listing: projects and their open tasks from the
+// knowledge-base graph, fetched into #ov-body each time the view is shown.
+// Every .ov-row is startable — term.js owns the keyboard selection (up/down
+// moves .selected, enter and click POST /ui/start) — except the unfiled
+// pseudo-group's header, which has no directory to start in, and the "..."
+// overflow row (data-ov-more), which expands its project's hidden tasks
+// instead. Task rows past overviewTaskCap — open and done combined — ship
+// hidden so expansion is client-only.
+templ overviewList(projects []OverviewProject) {
+	<div class="ov-box">
+		if len(projects) == 0 {
+			<div class="ov-empty">no projects registered — run <span class="ov-code">register-project</span> in a shell</div>
+		}
+		for _, p := range projects {
+			<div class="ov-project">
+				if p.ID != 0 {
+					<div class="ov-row ov-phead" data-ov-kind="project" data-ov-id={ strconv.Itoa(int(p.ID)) }>
+						<span class="ov-pname">{ p.Name }</span>
+						<span class="ov-ppath">{ dirLabel(p.Path) }</span>
+						<span class="ov-count">{ fmtOpenCount(len(p.Tasks)) }</span>
+					</div>
+				} else {
+					<div class="ov-phead ov-unfiled">
+						<span class="ov-pname">unfiled</span>
+						<span class="ov-count">{ fmtOpenCount(len(p.Tasks)) }</span>
+					</div>
+				}
+				for i, t := range p.Tasks {
+					<div class="ov-row ov-task" data-ov-kind="task" data-ov-id={ strconv.Itoa(int(t.ID)) } hidden?={ len(p.Tasks)+len(p.Done) > overviewTaskCap && i >= overviewTaskCap }>
+						<span class="ov-arrow">›</span>
+						<span class="ov-text">{ t.Text }</span>
+					</div>
+				}
+				for i, t := range p.Done {
+					<div class="ov-task ov-done" hidden?={ len(p.Tasks)+len(p.Done) > overviewTaskCap && len(p.Tasks)+i >= overviewTaskCap }>
+						<span class="ov-text">{ t.Text }</span>
+					</div>
+				}
+				if len(p.Tasks)+len(p.Done) > overviewTaskCap {
+					<div class="ov-row ov-task ov-more" data-ov-more>
+						<span class="ov-text">...</span>
+					</div>
+				}
+			</div>
+		}
+		if len(projects) > 0 {
+			<div class="ov-hint">↑/↓ selects · enter starts a session · ⌘K names one</div>
+		}
+	</div>
+}
+
+// The graph view: the knowledge-base graph drawn as a force-directed canvas.
+// The markup is only scaffolding — graph.js fetches /ui/graph each time the
+// view is shown and owns the canvas, the legend (type chips that toggle
+// visibility), the stats line, and the node detail panel; everything dynamic
+// is client-rendered because the data is already in the browser.
+templ graphView() {
+	<div id="graph-view" hidden>
+		<div id="graph-hdr">
+			<span id="graph-stats"></span>
+			<div id="graph-legend"></div>
+		</div>
+		<div id="graph-body">
+			<div id="graph-canvas-host">
+				<canvas id="graph-canvas"></canvas>
+				<div id="graph-empty" hidden>graph is empty — <span class="ov-code">remember</span> something in a shell</div>
+				<div id="graph-hint">drag orients · wheel zooms · click a node for details</div>
+			</div>
+			<aside id="graph-side" hidden></aside>
+		</div>
+	</div>
+}
+
+// pollFragment is the 2s poll response: rail rows into #session-list, the
+// rest out-of-band.
+templ pollFragment(m viewModel) {
+	@railRows(m)
+	<div id="tab-list" style="display: contents" hx-swap-oob="innerHTML">
+		@tabItems(m)
+	</div>
+	<span id="session-count" hx-swap-oob="true">{ strconv.Itoa(len(m.Sessions)) }</span>
+	<span id="running-count" hx-swap-oob="true">{ strconv.Itoa(m.runningCount()) } Running</span>
+	<span id="ts-harness" hx-swap-oob="true">
+		@harnessText(m)
+	</span>
+	@sysBarsOOB(m)
+	@usageBarsOOB(m)
+}
+
+// harnessText renders the harness label, spelling "rf" as the wordmark's
+// roman-r italic-f monogram. Shared by the page and the poll's oob swap.
+templ harnessText(m viewModel) {
+	if m.harnessLabel() == "rf" {
+		r<i>f</i>
+	} else {
+		{ m.harnessLabel() }
+	}
+}
+
+templ railRows(m viewModel) {
+	for _, s := range m.Sessions {
+		@sessionRow(s, m.selected(s))
+	}
+	for _, s := range m.Scheduled {
+		@scheduledRow(s, m.Now)
+	}
+	if m.View == viewNew {
+		<div class="session-row selected" data-pending>
+			<div class="line1">
+				<span class="dot bg-IDLE"></span>
+				<span class="name">new session</span>
+			</div>
+		</div>
+	}
+}
+
+templ sessionRow(s Session, selected bool) {
+	<div class={ "session-row", templ.KV("selected", selected) } data-session-id={ s.ID }>
+		<div class="line1">
+			<span class={ "dot", "bg-" + s.Status }></span>
+			<span class="name">{ s.Name }</span>
+			<span class={ "status", "st-" + s.Status }>{ s.Status }</span>
+		</div>
+		<div class="task">{ detailOf(s) }</div>
+		<div class="meta">
+			if fmtElapsed(s.Elapsed) != "" {
+				<span>{ fmtElapsed(s.Elapsed) }</span>
+			}
+			<span class="diff">{ fmtDiff(s) }</span>
+		</div>
+	</div>
+}
+
+// A scheduled session's rail row (schedule.go): the countdown where a live
+// row shows its name, the command it will open with where a live row shows
+// its title, and the name, cadence, and directory in the meta line. It
+// carries data-schedule-id rather than data-session-id — there is nothing
+// to attach to yet, so term.js's row click ignores it.
+templ scheduledRow(s Session, now time.Time) {
+	<div class="session-row scheduled" data-schedule-id={ s.ID }>
+		<div class="line1">
+			<span class="dot bg-SCHEDULED"></span>
+			<span class="name">{ fmtUntil(time.Unix(s.Next, 0), now) }</span>
+			<span class="status st-SCHEDULED">{ StatusScheduled }</span>
+		</div>
+		<div class="task">{ scheduledDetail(s) }</div>
+		<div class="meta">
+			<span>{ s.Name }</span>
+			if s.Every != "" {
+				<span>every { s.Every }</span>
+			}
+			if s.Dir != "" {
+				<span class="diff">{ dirLabel(s.Dir) }</span>
+			}
+		</div>
+	</div>
+}
+
+templ graphIcon(size int) {
+	<svg width={ strconv.Itoa(size) } height={ strconv.Itoa(size) } viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="graph">
+		<circle cx="4" cy="4" r="1.8"></circle>
+		<circle cx="12.2" cy="5.4" r="1.8"></circle>
+		<circle cx="7.4" cy="12" r="1.8"></circle>
+		<path d="M5.7 4.7 10.5 5.2"></path>
+		<path d="M5 5.8 6.6 10.4"></path>
+		<path d="M11.2 7 8.4 10.6"></path>
+	</svg>
+}
+
+// The theme toggle's two faces: the sun shows in light mode, the moon in
+// dark (style.css switches on data-theme). 24-unit feather geometry at a
+// 2px stroke lands on the same ~1.3px optical weight as graphIcon.
+templ sunIcon(size int) {
+	<svg class="icon-sun" width={ strconv.Itoa(size) } height={ strconv.Itoa(size) } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="light mode">
+		<circle cx="12" cy="12" r="5"></circle>
+		<path d="M12 1v2"></path>
+		<path d="M12 21v2"></path>
+		<path d="M4.22 4.22l1.42 1.42"></path>
+		<path d="M18.36 18.36l1.42 1.42"></path>
+		<path d="M1 12h2"></path>
+		<path d="M21 12h2"></path>
+		<path d="M4.22 19.78l1.42-1.42"></path>
+		<path d="M18.36 5.64l1.42-1.42"></path>
+	</svg>
+}
+
+templ moonIcon(size int) {
+	<svg class="icon-moon" width={ strconv.Itoa(size) } height={ strconv.Itoa(size) } viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="dark mode">
+		<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+	</svg>
+}
+
+templ tabItems(m viewModel) {
+	<div class={ "tab", "tab-overview", templ.KV("active", m.View == viewOverview) } data-overview title="overview">
+		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="overview">
+			<path d="M2.5 7.5 8 3l5.5 4.5"></path>
+			<path d="M4 7.2V13h8V7.2"></path>
+		</svg>
+	</div>
+	for _, s := range m.Sessions {
+		<div class={ "tab", templ.KV("active", m.selected(s)) } data-session-id={ s.ID }>
+			{ s.Name }
+			<span class="tab-x" data-close title="close session">×</span>
+		</div>
+	}
+	if m.GraphOpen {
+		<div class={ "tab", "tab-graph", templ.KV("active", m.View == viewGraph) } data-graph title="knowledge-base graph">
+			@graphIcon(12)
+			graph-view
+			<span class="tab-x" data-close title="close">×</span>
+		</div>
+	}
+	if m.View == viewNew {
+		<div class="tab active" data-pending>
+			new session
+			<span class="tab-x" data-close title="cancel">×</span>
+		</div>
+	}
+}
+
+// Host memory bar, between the running count and the quota bars; hidden when
+// the sampler has nothing (non-Linux). Rendered twice — plain in the page, oob in the poll —
+// like the quota bars.
+templ sysBars(m viewModel) {
+	@sysBar("sys-mem", "Mem", memPct(m.Sys), memGB(m.Sys), false)
+}
+
+templ sysBarsOOB(m viewModel) {
+	@sysBar("sys-mem", "Mem", memPct(m.Sys), memGB(m.Sys), true)
+}
+
+// The fill is still percent (a bar needs a scale); the text label is the raw
+// used-GB figure.
+templ sysBar(id, label string, pct *float64, text string, oob bool) {
+	<span
+		class="quota sys"
+		id={ id }
+		hidden?={ pct == nil }
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<span>{ label }</span>
+		<span class="track"><span class="fill" style={ sysFill(pct) }></span></span>
+		<span class="pct">{ text }</span>
+	</span>
+}
+
+// The Claude subscription quota bars; hidden entirely until a statusline
+// run has recorded usage. Rendered twice — plain in the page, oob in the poll.
+templ usageBars(m viewModel) {
+	@usageBar("u-session", "Session", "s", sessionWindow(m.Usage), m.Now, false)
+	@usageBar("u-week", "Week", "w", weekWindow(m.Usage), m.Now, false)
+}
+
+templ usageBarsOOB(m viewModel) {
+	@usageBar("u-session", "Session", "s", sessionWindow(m.Usage), m.Now, true)
+	@usageBar("u-week", "Week", "w", weekWindow(m.Usage), m.Now, true)
+}
+
+templ usageBar(id, label, prefix string, w *UsageWindow, now time.Time, oob bool) {
+	<span
+		class="quota"
+		id={ id }
+		hidden?={ w == nil }
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<span>{ label }</span>
+		<span class="track"><span class="fill" id={ prefix + "-fill" } style={ fillWidth(w) }></span></span>
+		<span class="pct" id={ prefix + "-pct" }>
+			if w != nil {
+				{ strconv.Itoa(clampPct(w.Utilization)) }%
+			}
+		</span>
+		<span class="dim" id={ prefix + "-reset" }>
+			if w != nil {
+				{ fmtReset(w.ResetsAt, now) }
+			}
+		</span>
+	</span>
+}

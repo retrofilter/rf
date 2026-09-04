@@ -1,0 +1,42 @@
+# rf-console@.service — the retrofilter console as an always-on service.
+#
+# Template unit, Syncthing-style: the instance name is the user to run as,
+# so the console gets that user's real home — ~/.rf, ~/.claude auth, their
+# projects. Install and start for one user — `sudo make install-service`
+# (defaults to the invoking user; SERVICE_USER=name overrides), or by hand:
+#
+#   sudo cp rf-console@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now rf-console@USER
+#
+# The console listens on 127.0.0.1 by default; from another machine, reach
+# it over an SSH tunnel, a tailnet, or a TLS reverse proxy such as Caddy
+# (see the Console section of the guide — `rf help console`). Nothing
+# secret is ever logged: open the
+# console URL and sign in at its /login page with the token printed by
+#
+#   rf token
+#
+# On Linux `make install` puts rf in /usr/local/bin, which is where
+# ExecStart expects it; if yours lives elsewhere, override ExecStart with
+# `systemctl edit rf-console@USER`. Use the same drop-in to extend PATH if
+# claude lives somewhere user-local:
+#
+#   [Service]
+#   Environment=PATH=/home/USER/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Unit]
+Description=retrofilter console (%i)
+Documentation=https://github.com/retrofilter/rf
+After=network.target
+
+[Service]
+User=%i
+ExecStart=/usr/local/bin/rf console --no-open
+WorkingDirectory=~
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

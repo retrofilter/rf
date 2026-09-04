@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-go caches the module and build caches keyed on go.sum,
+      # so no separate actions/cache step is needed.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Lint comments
+        run: go run ./tools/commentlint ./...
+
+      # Includes the PTY integration tests (they build and drive the rf
+      # binary; pure-Go SQLite means no system dependencies).
+      - name: Test
+        run: go test ./...

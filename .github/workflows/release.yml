@@ -1,0 +1,40 @@
+name: release
+
+# Tag push (`git tag v0.1.0 && git push origin v0.1.0`) → tests → goreleaser
+# (.goreleaser.yaml): GitHub release with darwin/linux × amd64/arm64
+# tarballs + checksums.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser derives the changelog and the previous tag from
+          # history; a shallow clone has neither.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The same gate as ci.yml — a tag never ships what main wouldn't.
+      - name: Test
+        run: go test ./...
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

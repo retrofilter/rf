@@ -1,0 +1,64 @@
+# Release artifacts: on a `v*` tag push the release workflow
+# (.github/workflows/release.yml) runs goreleaser, which cross-compiles rf
+# for darwin/linux × amd64/arm64 and attaches tarballs + checksums to the
+# GitHub release. Pure-Go SQLite (modernc) means CGO_ENABLED=0 is enough —
+# no per-platform toolchains. `go install github.com/retrofilter/rf@latest`
+# needs none of this: the module path's last element names the binary.
+#
+# Dry run locally (no tag, nothing published):  goreleaser release --snapshot --clean
+# Lint this file:                                goreleaser check
+version: 2
+
+project_name: rf
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: rf
+    binary: rf
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # Same flags as `make build`: strip DWARF/symbols, stamp the tag into
+    # rf --version (cmd/version.go). The commit comes from Go's vcs stamp.
+    ldflags:
+      - -s -w -X github.com/retrofilter/rf/cmd.version={{ .Tag }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: rf
+    formats: [tar.gz]
+    name_template: "rf_{{ .Tag }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs?:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: retrofilter
+    name: rf
+  # The tag's notes are prepended; goreleaser appends the generated changelog.
+  mode: append
+  header: |
+    `go install github.com/retrofilter/rf@{{ .Tag }}`, or download the tarball
+    for your platform below. Check the install with `rf --version`.
