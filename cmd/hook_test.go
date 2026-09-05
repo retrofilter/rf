@@ -47,24 +47,29 @@ func TestSessionStartContext(t *testing.T) {
 	sessionStartContext(&buf, proj)
 	out := buf.String()
 	for _, want := range []string{
-		`Open tasks for project "proj"`,
-		"fix the flaky test",
-		`rf -e '(task "text")'`,
-		"{:complete ID}",
+		`1 open task for project "proj"`,
+		`rf -e '(tasks)'`,
+		"/task skill",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("session-start context missing %q:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "fix the flaky test") {
+		t.Fatalf("session-start context should count tasks, not list them:\n%s", out)
+	}
+	if n := strings.Count(out, "\n"); n != 1 {
+		t.Fatalf("session-start context should be one line, got %d:\n%s", n, out)
+	}
 
-	// Outside any project: no tasks, but the cheatsheet still teaches.
+	// Outside any project: still one line, still pointing at the spellings.
 	buf.Reset()
 	sessionStartContext(&buf, home)
 	out = buf.String()
-	if !strings.Contains(out, "No open tasks") {
-		t.Fatalf("expected empty listing outside the project:\n%s", out)
+	if !strings.Contains(out, "no open tasks here") {
+		t.Fatalf("expected an empty count outside the project:\n%s", out)
 	}
-	if !strings.Contains(out, `rf -e '(task "text")'`) {
-		t.Fatalf("cheatsheet should always print:\n%s", out)
+	if !strings.Contains(out, "/task skill") {
+		t.Fatalf("pointer to the skill should always print:\n%s", out)
 	}
 }

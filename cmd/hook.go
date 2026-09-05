@@ -105,34 +105,21 @@ func sessionStartContext(w io.Writer, cwd string) {
 	}
 	rows, _ := result.([]eval.Value)
 
-	scope := "this machine (no registered project here — tasks file globally)"
+	scope := "here (no registered project; tasks file globally)"
 	if dir, err := os.Getwd(); err == nil {
 		if name, _, ok := eval.FindProject(dir); ok {
-			scope = fmt.Sprintf("project %q", name)
+			scope = fmt.Sprintf("for project %q", name)
 		}
 	}
-	fmt.Fprintf(w, "rf keeps a task graph shared across your agent sessions and the user's shell.\n")
-	const maxRows = 10
-	shown := rows
-	if len(shown) > maxRows {
-		shown = shown[:maxRows]
+	count := "no open tasks"
+	switch len(rows) {
+	case 0:
+	case 1:
+		count = "1 open task"
+	default:
+		count = fmt.Sprintf("%d open tasks", len(rows))
 	}
-	if len(rows) == 0 {
-		fmt.Fprintf(w, "No open tasks for %s.\n", scope)
-	} else {
-		fmt.Fprintf(w, "Open tasks for %s:\n", scope)
-		if tbl, ok := eval.FormatTable(eval.Value(shown)); ok {
-			fmt.Fprintln(w, tbl)
-		}
-		if len(rows) > len(shown) {
-			fmt.Fprintf(w, "(+%d more — rf -e '(tasks)')\n", len(rows)-len(shown))
-		}
-	}
-	fmt.Fprint(w, `Work with tasks as you go — file follow-ups you won't do now, close what you finish:
-  rf -e '(task "text")'          file a task under this project (prints its id)
-  rf -e '(task {:complete ID})'  mark a task done
-  rf -e '(tasks)'                open tasks here ({:ready} unblocked, {:all} every project)
-`)
+	fmt.Fprintf(w, "rf: %s %s. rf -e '(tasks)' lists them; the /task skill files and completes them.\n", count, scope)
 }
 
 func init() {

@@ -335,12 +335,14 @@ SQLite is `modernc.org/sqlite` (pure Go): FTS5 built in, no cgo, no build tags.
   work, both deliberately *not* `RF_SESSION`-guarded (they cover every
   claude session on the machine and touch only `~/.rf/main.db`, no server
   needed): Stop syncs the turn's transcript into the message corpus, and
-  SessionStart prints the cwd's project + open tasks + the `rf -e` task
-  cheatsheet to stdout, which Claude Code injects as session context —
+  SessionStart prints one line — the cwd's project and its open-task
+  count, pointing at `(tasks)` and the `/task` skill for the spellings —
+  to stdout, which Claude Code injects as session context (deliberately
+  minimal: the skill carries the depth, the agent looks when it wants) —
   SessionStart is the one event whose installed line keeps stdout
   (`hookCommand`), everything else silences it. `rf hook --install` also
   writes the `/task` skill (`console/skills.go` →
-  `~/.claude/skills/task/SKILL.md`), the depth behind the cheatsheet:
+  `~/.claude/skills/task/SKILL.md`), the depth behind that line:
   exact `rf -e '(task ...)'` / `{:complete ID}` / `(tasks)` spellings and
   when-to-use guidance. Auth is
   jupyter-style (`token.go`/`auth.go`/`server.go`): localhost is not a
