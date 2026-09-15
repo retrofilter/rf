@@ -689,25 +689,39 @@ func pathExecutables(prefix string) []string {
 }
 
 func completeFiles(line []rune, cursor int) readline.Completions {
-	text := string(line[:cursor])
-	start := strings.LastIndexAny(text, " \t")
-	token := text[start+1:]
+	values, prefix := fileCandidates(string(line[:cursor]))
+	comps := readline.CompleteValues(values...)
+	if prefix != "" {
+		comps.PREFIX = prefix
+	}
+	return comps
+}
+
+func fileCandidates(text string) (values []string, prefix string) {
+	token := text[lastWordStart(text):]
 
 	// Strip Scheme decoration so "(cat \"CL" completes like "CL"
-	pathPrefix := strings.TrimLeft(token, "(")
-	pathPrefix = strings.TrimPrefix(pathPrefix, "\"")
+	prefix = strings.TrimLeft(token, "(")
+	var quote byte
+	body := prefix
+	if len(prefix) > 0 && (prefix[0] == '"' || prefix[0] == '\'') {
+		quote = prefix[0]
+		prefix = prefix[1:]
+		body = prefix
+	} else {
+		body = unescapeWord(prefix)
+	}
 
-	dir, base := filepath.Split(pathPrefix)
+	dir, base := filepath.Split(body)
 	searchDir := dir
 	if searchDir == "" {
 		searchDir = "."
 	}
 	entries, err := os.ReadDir(expandHome(searchDir))
 	if err != nil {
-		return readline.CompleteValues()
+		return nil, prefix
 	}
 
-	var values []string
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, base) {
@@ -721,14 +735,62 @@ func completeFiles(line []rune, cursor int) readline.Completions {
 		if entry.IsDir() {
 			candidate += "/"
 		}
+		switch quote {
+		case 0:
+			candidate = escapeWord(candidate)
+		case '"':
+			candidate = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "$", `\$`, "`", "\\`").Replace(candidate)
+		}
 		values = append(values, candidate)
 	}
+	return values, prefix
+}
 
-	comps := readline.CompleteValues(values...)
-	if pathPrefix != "" {
-		comps.PREFIX = pathPrefix
+func lastWordStart(text string) int {
+	start := 0
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			}
+		case c == '\\':
+			i++
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == ' ' || c == '\t':
+			start = i + 1
+		}
 	}
-	return comps
+	return start
+}
+
+func unescapeWord(word string) string {
+	var b strings.Builder
+	for i := 0; i < len(word); i++ {
+		if word[i] == '\\' && i+1 < len(word) {
+			i++
+		}
+		b.WriteByte(word[i])
+	}
+	return b.String()
+}
+
+func escapeWord(word string) string {
+	var b strings.Builder
+	for i := 0; i < len(word); i++ {
+		if strings.IndexByte(" \t\n\\\"'$`&|;()<>*?[]", word[i]) >= 0 {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(word[i])
+	}
+	return b.String()
 }
 
 func isSchemeLine(line string) bool {

@@ -554,3 +554,51 @@ func TestExpandHistory(t *testing.T) {
 	_, _, err = h3.expandHistory("!!", modeCommand)
 	require.Error(t, err)
 }
+
+func TestFileCandidatesQuoting(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"Application Support", "plain", "it's $here"} {
+		require.NoError(t, os.Mkdir(filepath.Join(dir, name), 0o755))
+	}
+	t.Chdir(dir)
+
+	values, prefix := fileCandidates("cd Applic")
+	require.Equal(t, []string{`Application\ Support/`}, values)
+	require.Equal(t, "Applic", prefix)
+
+	// A word carrying its own escapes is one word, and the prefix is as typed
+	values, prefix = fileCandidates(`cd Application\ Sup`)
+	require.Equal(t, []string{`Application\ Support/`}, values)
+	require.Equal(t, `Application\ Sup`, prefix)
+
+	values, prefix = fileCandidates("cd it")
+	require.Equal(t, []string{`it\'s\ \$here/`}, values)
+	require.Equal(t, "it", prefix)
+
+	// Inside quotes the name goes in raw, and the quote is not part of the prefix
+	values, prefix = fileCandidates(`cd "Application Sup`)
+	require.Equal(t, []string{`Application Support/`}, values)
+	require.Equal(t, "Application Sup", prefix)
+	values, prefix = fileCandidates(`cd 'it`)
+	require.Equal(t, []string{`it's $here/`}, values)
+	require.Equal(t, "it", prefix)
+	values, _ = fileCandidates(`cd "it`)
+	require.Equal(t, []string{`it's \$here/`}, values)
+
+	// Scheme decoration strips as before
+	values, prefix = fileCandidates(`(cat "pl`)
+	require.Equal(t, []string{"plain/"}, values)
+	require.Equal(t, "pl", prefix)
+
+	// The last word starts after an escaped or quoted blank, not at it
+	values, prefix = fileCandidates(`cp Application\ Support pl`)
+	require.Equal(t, []string{"plain/"}, values)
+	require.Equal(t, "pl", prefix)
+	values, _ = fileCandidates(`cp "Application Support" pl`)
+	require.Equal(t, []string{"plain/"}, values)
+
+	// Empty word lists everything, unquoted spellings escaped
+	values, prefix = fileCandidates("ls ")
+	require.Equal(t, []string{`Application\ Support/`, `it\'s\ \$here/`, "plain/"}, values)
+	require.Equal(t, "", prefix)
+}
