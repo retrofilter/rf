@@ -1,6 +1,7 @@
 package console
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"regexp"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/retrofilter/rf/models"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 const overviewGraphName = "knowledge-base"
@@ -20,11 +23,12 @@ type OverviewTask struct {
 
 // OverviewProject groups a project's open tasks under its header row, with
 // its most recently completed tasks (capped at overviewDoneCap) shown
-// underneath.
+// underneath. Text is the project's markdown notes rendered to HTML.
 type OverviewProject struct {
 	ID    uint32
 	Name  string
 	Path  string
+	Text  string
 	Tasks []OverviewTask
 	Done  []OverviewTask
 }
@@ -51,10 +55,11 @@ func (s *Server) overview() []OverviewProject {
 		props := node.FormattedProperties()
 		name, _ := props["name"].(string)
 		path, _ := props["path"].(string)
-		if name == "" || path == "" {
+		text, _ := props["text"].(string)
+		if name == "" {
 			continue
 		}
-		p := &OverviewProject{ID: node.ID, Name: name, Path: path}
+		p := &OverviewProject{ID: node.ID, Name: name, Path: path, Text: renderMarkdown(text)}
 		byName[name] = p
 		projects = append(projects, p)
 	}
@@ -102,6 +107,19 @@ func (s *Server) overview() []OverviewProject {
 		out = append(out, *unfiled)
 	}
 	return out
+}
+
+var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
+
+func renderMarkdown(src string) string {
+	if strings.TrimSpace(src) == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := markdown.Convert([]byte(src), &buf); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 type startSpec struct {

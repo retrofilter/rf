@@ -99,7 +99,8 @@ func bootServer(spawnCmd string) (*httptest.Server, error) {
 }
 
 func seed(cg *core.Graph, dir string) {
-	retro := seedNode(cg, "project", map[string]any{"name": "retrofilter", "path": dir, "kind": "dir"})
+	retro := seedNode(cg, "project", map[string]any{"name": "retrofilter", "path": dir, "kind": "dir",
+		"text": "A programmable, persistent shell. Notes here come from `project -e`."})
 	bench := seedNode(cg, "project", map[string]any{"name": "benchmarks", "path": dir, "kind": "dir"})
 	for _, seed := range []struct {
 		text    string

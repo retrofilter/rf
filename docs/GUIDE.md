@@ -107,7 +107,9 @@ Everything the model does that touches your machine asks first. Reads
 `mv`, `sh`, `fetch`, `write-file`, the `edit`/`write` tools) each hit a
 y/N prompt when the *model* calls them; your own typed code never does.
 Some commands (`configure`, `resume`, `compact`, `clear`, `exec`, `exit`,
-`delete-graph`) are user-only and refuse the model outright.
+`delete-graph`, and the project words — `project`, `projects`,
+`register-project`, `unregister-project`) are user-only and refuse the
+model outright: the model works *inside* projects, it never shapes them.
 
 Two prelude bindings widen that, deliberately, in data you can read.
 The first run writes both with defaults — reads under the chat's
@@ -204,8 +206,16 @@ built on them:
   to a named graph; `default-graph` picks the one the convenience verbs
   use.
 - **Projects** — `register-project [path]` makes a directory a project
-  node; `projects` lists them, `project` shows the current one. `tree`
-  and `trees` manage git worktrees.
+  node; `project name` alone files a project with no directory behind
+  it (a bucket for tasks and notes — nothing is created on disk), or
+  cds into an existing one; `project --clone URL name` and `project
+  --init name` build a bare-repo worktree hub under `project-root`.
+  `project -e [name]` opens the project's markdown notes in `$EDITOR`
+  (`--text` sets them without one); the console's overview shows them
+  under the project's header. `projects` lists them, bare `project`
+  describes the current one. Every project word is user-only: the model
+  can file and read tasks under a project, but never create, enter, or
+  edit one. `tree` and `trees` manage git worktrees.
 - **Tasks** — `task some text` files a task under the current project,
   `tasks` lists open ones (`--ready` for unblocked, `--all` for every
   project), `task -c id` closes, `task -d id` deletes one

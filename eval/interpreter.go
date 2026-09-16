@@ -302,7 +302,6 @@ func NewEvaluatorWithEnvironment(db *sqlx.DB, gs *core.GraphStore) *Evaluator {
 	shellBuiltins(global, approval)
 	jobBuiltins(global, approval)
 	psBuiltins(global)
-	projectBuiltins(global, approval)
 	similarBuiltins(global, approval)
 	bm25Builtins(global, approval)
 	hybridBuiltins(global, approval)
@@ -333,9 +332,10 @@ func NewEvaluatorWithEnvironment(db *sqlx.DB, gs *core.GraphStore) *Evaluator {
 		historyBuiltins(global, ev, db)
 		messagesBuiltins(global, db)
 	}
+	projectBuiltins(global, ev, approval)
 	if gs != nil {
 		graphBuiltins(global, ev, gs)
-		registryBuiltins(global, gs)
+		registryBuiltins(global, ev, gs)
 		taskBuiltins(global, ev)
 	}
 	execBuiltin(global, ev)

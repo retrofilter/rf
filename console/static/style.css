@@ -543,6 +543,24 @@ main {
 .ov-pname { font-weight: 700; letter-spacing: .02em; }
 .ov-ppath { color: var(--terminal-muted); font-size: 11px; }
 .ov-count { margin-left: auto; color: var(--terminal-muted); font-size: 11px; flex-shrink: 0; }
+/* Project notes: markdown prose in the serif voice, indented with the tasks. */
+.ov-notes {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--terminal-fg);
+  padding: 2px 10px 2px 26px;
+  max-width: 62ch;
+}
+.ov-notes > :first-child { margin-top: 0; }
+.ov-notes > :last-child { margin-bottom: 0; }
+.ov-notes p, .ov-notes ul, .ov-notes ol, .ov-notes pre, .ov-notes blockquote { margin: 0 0 2px; }
+.ov-notes h1, .ov-notes h2, .ov-notes h3, .ov-notes h4 { font-size: 15px; font-weight: 700; margin: 2px 0; }
+.ov-notes ul, .ov-notes ol { padding-left: 1.4em; }
+.ov-notes code, .ov-notes pre { font-family: 'Hack', ui-monospace, monospace; font-size: 12px; }
+.ov-notes pre { padding: 6px 8px; background: var(--row-selected); overflow-x: auto; }
+.ov-notes a { color: var(--ink); }
+.ov-notes blockquote { border-left: 2px solid var(--terminal-muted); padding-left: 10px; color: var(--terminal-muted); }
 .ov-task {
   display: flex;
   align-items: baseline;

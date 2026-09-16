@@ -81,7 +81,7 @@ func TestGuideCoversRegistry(t *testing.T) {
 	require.NoError(t, err)
 	exempt := map[string]bool{
 		// covered by their family's sentence, not by name
-		"create-project": true, "create-tree": true, "delete-tree": true, "delete-task": true,
+		"create-tree": true, "delete-tree": true, "delete-task": true,
 		"delete-edge": true, "delete-graph": true, "unregister-project": true, "unalias": true,
 		"remove-path": true, "chunk": true,
 	}

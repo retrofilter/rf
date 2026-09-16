@@ -52,7 +52,7 @@ func TestCommandRegistryCoherence(t *testing.T) {
 	for _, name := range []string{
 		"dir", "similar", "fetch", "chunk", "where", "sort-by",
 		"group-by", "count-by", "pick", "project", "projects",
-		"create-project", "register-project", "unregister-project",
+		"register-project", "unregister-project",
 		"tree", "trees", "create-tree", "delete-tree",
 		"task", "tasks",
 		"history", "remember", "recall", "builtins", "aliases", "unalias",

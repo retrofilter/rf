@@ -117,6 +117,33 @@ func TestOverviewListsProjectsAndOpenTasks(t *testing.T) {
 	require.Contains(t, body, "a global errand")
 }
 
+func TestOverviewRendersProjectNotesAndPathlessProjects(t *testing.T) {
+	s, ts, cg := storeServer(t)
+	pid := seedNode(t, cg, "project", map[string]interface{}{
+		"name": "misc",
+		"text": "# Misc\n\nodds and *ends* <script>alert(1)</script>",
+	})
+	tid := seedTask(t, cg, "sort the garage", "open", pid)
+
+	res, body := get(t, s, ts, "/ui/overview")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	// A pathless project is listed, startable, and shows no path label.
+	require.Contains(t, body, `data-ov-kind="project" data-ov-id="`+strconv.Itoa(int(pid))+`"`)
+	require.NotContains(t, body, `ov-ppath`)
+	// Notes render as markdown between the header and the tasks, raw HTML dropped.
+	require.Contains(t, body, `<div class="ov-notes">`)
+	require.Contains(t, body, `<h1>Misc</h1>`)
+	require.Contains(t, body, `odds and <em>ends</em>`)
+	require.NotContains(t, body, `<script>`)
+	require.Less(t, strings.Index(body, `ov-notes`), strings.Index(body, `data-ov-id="`+strconv.Itoa(int(tid))+`"`))
+
+	// Starting it spawns in $HOME — no directory to start in.
+	res, _ = startForm(t, s, ts, "project", pid)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Len(t, s.mgr.List(), 1)
+	require.Equal(t, "misc", s.mgr.List()[0].Name)
+}
+
 func TestOverviewCapsDoneTasksPerProject(t *testing.T) {
 	s, ts, cg := storeServer(t)
 	pid := seedProject(t, cg, "retro", t.TempDir())

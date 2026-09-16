@@ -123,7 +123,10 @@ SQLite is `modernc.org/sqlite` (pure Go): FTS5 built in, no cgo, no build tags.
     tasks as graph nodes (`task`/`tasks`/`task -c`, `for`/`blocks` edges — see
     TASKS.md); `history.go`, `messages.go` (`messages` — search the unified
     chat-message corpus, rf + synced Claude Code; the candidate feed for
-    `messages -d . -n 2000 | hybrid "q"`), `project.go`, `alias.go`,
+    `messages -d . -n 2000 | hybrid "q"`), `project.go` (`project` — enter/create/describe, `--clone`/`--init` hubs,
+    `-e`/`--text` markdown notes on the node's `text` property, shown on the
+    console overview; a bare name with nothing behind it files a pathless
+    project node, no directory), `alias.go`,
     `inspect.go` (+ `persist`), `fetch.go`
   - `command.go` — the command-word registry: every builtin declares its
     command-mode presence beside its definition (`CommandMeta` — doc line,
@@ -466,7 +469,10 @@ Check changes against these — they are the design:
   the command gate reads only the *global* environment, so neither a spawned
   `(agent ...)` nor a `let`-shadow can widen a boundary. `RequireUser`
   builtins (`configure`, `resume`, `compact`, `clear`, `exec`, `exit`, `alias`,
-  `delete-graph`) reject assistant callers even through user-defined wrappers, and
+  `delete-graph`, and every project word — `project`, `projects`,
+  `register-project`, `unregister-project`: the project set is the user's
+  scope boundary, immutable and invisible to the agent, which only files and
+  reads tasks under it) reject assistant callers even through user-defined wrappers, and
   `env` force-redacts credential-looking values for the assistant. Irreversible
   builtins (`delete-graph`) additionally consult the evaluator's **confirmer**
   (`SetConfirmer` — the shell's inline y/N, showing node/edge counts); with no

@@ -85,6 +85,116 @@ func TestRegisterProject(t *testing.T) {
 	})
 }
 
+func TestProjectWithoutDirectory(t *testing.T) {
+	withTaskHome(t, func(home string, ev *Evaluator, env *Environment) {
+		mustEval := func(expr string) Value {
+			t.Helper()
+			v, err := evalExpr(expr, ev, env)
+			if err != nil {
+				t.Fatalf("%s: %v", expr, err)
+			}
+			return v
+		}
+
+		// project NAME with nothing behind it files a pathless node: no dir, no git.
+		id, ok := mustEval(`(project "misc")`).(Integer)
+		require.True(t, ok, "creating a project should return its node id")
+		require.NotZero(t, id)
+		entries, _ := os.ReadDir(filepath.Join(home, "src"))
+		require.Empty(t, entries, "a pathless project must create nothing under the project root")
+		require.Equal(t, home, cwdOf(t), "a pathless project never changes directory")
+
+		rows := mustEval(`(projects)`).([]Value)
+		require.Len(t, rows, 1)
+		require.Equal(t, String("misc"), rows[0].(Dictionary)["name"])
+		require.Equal(t, String(""), rows[0].(Dictionary)["path"])
+
+		// A pathless project never claims a directory.
+		_, _, found := FindProject(home)
+		require.False(t, found)
+
+		// Naming it again describes rather than re-creates.
+		dict := mustEval(`(project "misc")`).(Dictionary)
+		require.Equal(t, String("misc"), dict["name"])
+		require.Equal(t, String(""), dict["text"])
+
+		// Tasks file under it by name.
+		mustEval(`(task "sort the garage" {:project "misc"})`)
+		tasks := mustEval(`(tasks {:project "misc"})`).([]Value)
+		require.Len(t, tasks, 1)
+
+		// --text sets the markdown; "" clears it.
+		mustEval(`(project "misc" {:text "# Misc\n\nodds and ends"})`)
+		dict = mustEval(`(project "misc")`).(Dictionary)
+		require.Equal(t, String("# Misc\n\nodds and ends"), dict["text"])
+		mustEval(`(project "misc" {:text ""})`)
+		dict = mustEval(`(project "misc")`).(Dictionary)
+		require.Equal(t, String(""), dict["text"])
+
+		// --edit runs $EDITOR on a temp file and stores what it leaves behind.
+		script := filepath.Join(home, "fake-editor.sh")
+		require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nfor f; do :; done\nprintf 'edited **notes**\\n' > \"$f\"\n"), 0755))
+		t.Setenv("EDITOR", script+" -q")
+		require.Equal(t, true, mustEval(`(project "misc" {:edit #t})`))
+		dict = mustEval(`(project "misc")`).(Dictionary)
+		require.Equal(t, String("edited **notes**"), dict["text"])
+
+		// Unknown names for edit error instead of creating.
+		if _, err := evalExpr(`(project "nope" {:edit #t})`, ev, env); err == nil {
+			t.Fatal("editing an unknown project should error")
+		}
+		if _, err := evalExpr(`(project "misc" {:edit #t :text "x"})`, ev, env); err == nil {
+			t.Fatal("--edit with --text should error as exclusive")
+		}
+
+		// Bare project inside a registered directory describes it.
+		dir := filepath.Join(home, "work", "thing")
+		require.NoError(t, os.MkdirAll(dir, 0755))
+		mustEval(`(register-project "~/work/thing")`)
+		t.Chdir(dir)
+		dict = mustEval(`(project)`).(Dictionary)
+		require.Equal(t, String("thing"), dict["name"])
+		require.Equal(t, String(dir), dict["path"])
+		mustEval(`(project {:text "the thing"})`)
+		require.Equal(t, String("the thing"), mustEval(`(project)`).(Dictionary)["text"])
+	})
+}
+
+func TestProjectWordsAreUserOnly(t *testing.T) {
+	withTaskHome(t, func(home string, ev *Evaluator, env *Environment) {
+		if _, err := evalExpr(`(project "misc")`, ev, env); err != nil {
+			t.Fatal(err)
+		}
+		ev.SetCaller(CallerAssistant)
+		defer ev.SetCaller(CallerUser)
+		for _, form := range []string{
+			`(project)`, `(project "misc")`, `(project "misc" {:text "x"})`, `(project "misc" {:edit #t})`,
+			`(project "new" {:init #t})`, `(projects)`,
+			`(register-project "~")`, `(unregister-project "misc")`,
+		} {
+			_, err := evalExpr(form, ev, env)
+			require.Error(t, err, form)
+			require.Contains(t, err.Error(), "only be run by the user", form)
+		}
+		// Reading and filing tasks stays open to the assistant.
+		if _, err := evalExpr(`(task "still allowed" {:project "misc"})`, ev, env); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := evalExpr(`(tasks {:project "misc"})`, ev, env); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func cwdOf(t *testing.T) string {
+	t.Helper()
+	d, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 func TestTaskLifecycle(t *testing.T) {
 	withTaskHome(t, func(home string, ev *Evaluator, env *Environment) {
 		mustEval := func(expr string) Value {

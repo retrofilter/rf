@@ -30,7 +30,6 @@ in as the last argument.
 | configure |  | interactive setup: provider, model, thinking, claude code hooks |
 | count-by | ✓ | count rows per column value — history \| count-by project |
 | create-graph |  | create a new named graph |
-| create-project |  | create a bare-repo project hub under the project root and cd in |
 | create-tree |  | add a branch worktree to the current project |
 | delete-edge |  | delete edges by id |
 | delete-graph |  | delete a named graph and its contents (asks y/N) |
@@ -61,10 +60,10 @@ in as the last argument.
 | paths |  | the PATH entries as {:path} rows |
 | persist |  | promote a definition to the prelude via a sub-agent |
 | pick | ✓ | keep only the named columns — ls \| pick name size |
-| project |  | cd into a project's worktree directory |
-| projects |  | list registered projects as rows |
+| project |  | enter, create, or describe a project (user-only) |
+| projects |  | list registered projects as rows (user-only) |
 | recall |  | search remembered notes |
-| register-project |  | register a directory (cwd by default) as a project |
+| register-project |  | register a directory (cwd by default) as a project (user-only) |
 | remember |  | save a note to the default graph |
 | remove-path |  | remove directories from PATH |
 | rename-session |  | rename this console session (needs rf console) |
@@ -81,7 +80,7 @@ in as the last argument.
 | tree |  | cd into a project worktree, creating it if missing |
 | trees |  | list the current project's worktrees as rows |
 | unalias |  | remove a command-mode alias |
-| unregister-project |  | remove a project from the registry |
+| unregister-project |  | remove a project from the registry (user-only) |
 | usage |  | session token totals, cost, and context size |
 | where | ✓ | filter rows by field comparisons (= != -gt -lt -ge -le, chained with and/or) or a predicate — dir \| where type = file and size -gt 100MB |
 
@@ -623,15 +622,6 @@ usage:  create-graph name
 scheme: (create-graph name)
 ```
 
-### create-project
-
-```
-create-project — create a bare-repo project hub under the project root and cd in
-
-usage:  create-project name [clone-url]
-scheme: (create-project name [clone-url])
-```
-
 ### create-tree
 
 ```
@@ -971,16 +961,22 @@ scheme: (pick key ...)
 ### project
 
 ```
-project — cd into a project's worktree directory
+project — enter, create, or describe a project (user-only)
 
-usage:  project name
-scheme: (project name)
+usage:  project [name] [flags]
+scheme: (project [name] [{:edit #t :text MARKDOWN :clone URL :init #t}])
+
+  -e, --edit           edit the project's markdown text in $EDITOR
+  -t, --text MARKDOWN  set the project's text without an editor ("" clears it)
+  -c, --clone URL      create a bare-repo hub under the project root from URL and cd in
+  -i, --init           create an empty bare-repo hub under the project root and cd in
+  -h, --help           this help
 ```
 
 ### projects
 
 ```
-projects — list registered projects as rows
+projects — list registered projects as rows (user-only)
 
 usage:  projects
 scheme: (projects)
@@ -1001,7 +997,7 @@ scheme: (recall [query] [{:limit N}])
 ### register-project
 
 ```
-register-project — register a directory (cwd by default) as a project
+register-project — register a directory (cwd by default) as a project (user-only)
 
 usage:  register-project [path] [flags]
 scheme: (register-project [path] [{:name NAME}])
@@ -1201,7 +1197,7 @@ scheme: (unalias name)
 ### unregister-project
 
 ```
-unregister-project — remove a project from the registry
+unregister-project — remove a project from the registry (user-only)
 
 usage:  unregister-project name [flags]
 scheme: (unregister-project name [{:tasks #t}])

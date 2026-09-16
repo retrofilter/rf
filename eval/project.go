@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/retrofilter/rf/core"
 )
 
 const defaultProjectRoot = "~/src"
@@ -272,7 +276,202 @@ func hubGitFile(hub string) error {
 	return os.WriteFile(filepath.Join(hub, ".git"), []byte("gitdir: ./.bare\n"), 0644)
 }
 
-func projectBuiltins(env *Environment, approval *approvalGate) {
+func createHub(name, url string) (Value, error) {
+	hub := filepath.Join(ProjectRoot(), name)
+	if _, err := os.Stat(hub); err == nil {
+		return nil, fmt.Errorf("project %q already exists at %s", name, hub)
+	}
+	if err := os.MkdirAll(hub, 0755); err != nil {
+		return nil, err
+	}
+	bare := filepath.Join(hub, ".bare")
+	branch := "main"
+	if url == "" {
+		if _, err := gitRun(hub, "init", "--bare", "-b", "main", bare); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := gitRun(hub, "clone", "--bare", url, bare); err != nil {
+			return nil, err
+		}
+		if _, err := gitRun(bare, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+			return nil, err
+		}
+		if def, err := gitRun(bare, "symbolic-ref", "--short", "HEAD"); err == nil && def != "" {
+			branch = def
+		}
+		if _, err := gitRun(bare, "fetch", "origin"); err != nil {
+			return nil, err
+		}
+	}
+	if err := hubGitFile(hub); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(hub, branch)
+	wtArgs := []string{"worktree", "add", path, branch}
+	if url == "" {
+		wtArgs = []string{"worktree", "add", "--orphan", "-b", branch, path}
+	}
+	if _, err := gitRun(hub, wtArgs...); err != nil {
+		return nil, err
+	}
+	if err := os.Chdir(path); err != nil {
+		return nil, err
+	}
+	if cg, err := registryGraphWrite(); err == nil {
+		_, _ = registerProjectNode(cg, name, hub, "hub")
+	}
+	return String(path), nil
+}
+
+func enterHub(name string) (Value, error) {
+	var hub string
+	if rp, ok := registeredProjectByName(name); ok {
+		if rp.Kind != "hub" {
+			if err := os.Chdir(rp.Path); err != nil {
+				return nil, err
+			}
+			return String(rp.Path), nil
+		}
+		hub = rp.Path
+	} else {
+		hub = filepath.Join(ProjectRoot(), name)
+	}
+	if info, err := os.Stat(hub); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("no project %q under %s", name, ProjectRoot())
+	}
+	target := hub
+	candidates := []string{"main"}
+	if def, err := gitRun(hub, "symbolic-ref", "--short", "HEAD"); err == nil {
+		candidates = append(candidates, def)
+	}
+	for _, c := range candidates {
+		if info, err := os.Stat(filepath.Join(hub, c)); err == nil && info.IsDir() {
+			target = filepath.Join(hub, c)
+			break
+		}
+	}
+	if target == hub {
+		if subs, err := os.ReadDir(hub); err == nil {
+			for _, s := range subs {
+				if s.IsDir() && !strings.HasPrefix(s.Name(), ".") {
+					target = filepath.Join(hub, s.Name())
+					break
+				}
+			}
+		}
+	}
+	if err := os.Chdir(target); err != nil {
+		return nil, err
+	}
+	return String(target), nil
+}
+
+func projectDict(rp RegisteredProject) Dictionary {
+	return Dictionary{
+		"name": String(rp.Name),
+		"path": String(rp.Path),
+		"kind": String(rp.Kind),
+		"text": String(rp.Text),
+	}
+}
+
+func currentProject() (RegisteredProject, bool) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return RegisteredProject{}, false
+	}
+	if rp, ok := registeredProjectFor(cwd); ok {
+		return rp, true
+	}
+	if name, hub, ok := FindProject(cwd); ok {
+		return RegisteredProject{Name: name, Path: hub, Kind: detectProjectKind(hub)}, true
+	}
+	return RegisteredProject{}, false
+}
+
+func projectNodeFor(cg *core.Graph, name string) (uint32, error) {
+	if name != "" {
+		if rp, ok := registeredProjectByName(name); ok {
+			return rp.NodeID, nil
+		}
+		return 0, fmt.Errorf("no project %q (create it with (project %q))", name, name)
+	}
+	rp, ok := currentProject()
+	if !ok {
+		return 0, errors.New("not inside a project — name one: (project \"name\" ...)")
+	}
+	if rp.NodeID != 0 {
+		return rp.NodeID, nil
+	}
+	return taskProjectNode(cg, rp.Name, rp.Path)
+}
+
+func setProjectText(cg *core.Graph, id uint32, text string) error {
+	node, err := cg.GetNode(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	props := node.FormattedProperties()
+	if text == "" {
+		delete(props, "text")
+	} else {
+		props["text"] = text
+	}
+	propsJSON, err := json.Marshal(props)
+	if err != nil {
+		return err
+	}
+	node.Properties = (*json.RawMessage)(&propsJSON)
+	if _, err := cg.UpdateNode(context.Background(), node); err != nil {
+		return err
+	}
+	invalidateProjectRegistry()
+	return nil
+}
+
+func editInEditor(ev *Evaluator, current string) (string, error) {
+	f, err := os.CreateTemp("", "rf-project-*.md")
+	if err != nil {
+		return "", err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if _, err := f.WriteString(current); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	editor := strings.Fields(os.Getenv("EDITOR"))
+	if len(editor) == 0 {
+		editor = []string{"vi"}
+	}
+	argv := append(editor, tmp)
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if ev.foreground != nil {
+		code, err := ev.foreground(cmd, strings.Join(argv, " "))
+		if err != nil {
+			return "", err
+		}
+		if code != 0 {
+			return "", fmt.Errorf("%s exited with status %d", argv[0], code)
+		}
+	} else if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s: %w", argv[0], err)
+	}
+	data, err := os.ReadFile(tmp)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func projectBuiltins(env *Environment, ev *Evaluator, approval *approvalGate) {
 	env.Set("project-root", String(defaultProjectRoot))
 	projectRootEnv = env
 	projectRegMu.Lock()
@@ -292,6 +491,9 @@ func projectBuiltins(env *Environment, approval *approvalGate) {
 	}
 
 	countTrees := func(path, kind string) int {
+		if path == "" {
+			return 0
+		}
 		dir := path
 		if kind != "hub" {
 			dir = filepath.Join(path, ".trees")
@@ -307,8 +509,11 @@ func projectBuiltins(env *Environment, approval *approvalGate) {
 		return trees
 	}
 
-	Register("projects", "list registered projects as rows", CommandMeta{Command: true})
+	Register("projects", "list registered projects as rows (user-only)", CommandMeta{Command: true})
 	env.Set("projects", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
+		if err := ev.RequireUser("projects"); err != nil {
+			return nil, err
+		}
 		if len(args) != 0 {
 			return nil, errors.New("projects expects no arguments")
 		}
@@ -331,118 +536,94 @@ func projectBuiltins(env *Environment, approval *approvalGate) {
 		return result, nil
 	}))
 
-	Register("project", "cd into a project's worktree directory", CommandMeta{Command: true, MinArgs: 1, MaxArgs: 1, Usage: "name"})
+	Register("project", "enter, create, or describe a project (user-only)", CommandMeta{
+		Command: true, MinArgs: 0, MaxArgs: 1, Usage: "[name]",
+		Options: []Option{
+			{Long: "edit", Short: "e", Kind: OptionBool, Doc: "edit the project's markdown text in $EDITOR"},
+			{Long: "text", Short: "t", Kind: OptionString, Placeholder: "MARKDOWN", Doc: "set the project's text without an editor (\"\" clears it)"},
+			{Long: "clone", Short: "c", Kind: OptionString, Placeholder: "URL", Doc: "create a bare-repo hub under the project root from URL and cd in"},
+			{Long: "init", Short: "i", Kind: OptionBool, Doc: "create an empty bare-repo hub under the project root and cd in"},
+		}})
 	env.Set("project", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
-		name, err := oneName("project", args)
+		if err := ev.RequireUser("project"); err != nil {
+			return nil, err
+		}
+		pos, opts, err := ParseOptions("project", args)
 		if err != nil {
 			return nil, err
 		}
-		// Registered lookup first, then the legacy project-root scan.
-		var hub string
-		if rp, ok := registeredProjectByName(name); ok {
-			if rp.Kind != "hub" {
-				// A directory project is its own working directory.
-				if err := os.Chdir(rp.Path); err != nil {
+		if len(pos) > 1 {
+			return nil, errors.New("project expects at most one name: (project [\"name\"] [{:edit #t :text MD :clone URL :init #t}])")
+		}
+		name := ""
+		if len(pos) == 1 {
+			s, ok := pos[0].(String)
+			if !ok {
+				return nil, errors.New("project expects a string name")
+			}
+			name = string(s)
+		}
+		_, hasText := opts["text"]
+		modes := 0
+		for _, on := range []bool{OptBool(opts, "edit"), hasText, OptString(opts, "clone", "") != "", OptBool(opts, "init")} {
+			if on {
+				modes++
+			}
+		}
+		if modes > 1 {
+			return nil, errors.New("project --edit, --text, --clone and --init are exclusive")
+		}
+		switch {
+		case OptString(opts, "clone", "") != "" || OptBool(opts, "init"):
+			if name == "" {
+				return nil, errors.New("project --clone/--init needs a name: (project \"name\" {:clone URL})")
+			}
+			return createHub(name, OptString(opts, "clone", ""))
+		case OptBool(opts, "edit") || hasText:
+			cg, err := registryGraphWrite()
+			if err != nil {
+				return nil, err
+			}
+			id, err := projectNodeFor(cg, name)
+			if err != nil {
+				return nil, err
+			}
+			text := OptString(opts, "text", "")
+			if OptBool(opts, "edit") {
+				rp, _ := registeredProjectByNodeID(id)
+				if text, err = editInEditor(ev, rp.Text); err != nil {
 					return nil, err
 				}
-				return String(rp.Path), nil
 			}
-			hub = rp.Path
-		} else {
-			hub = filepath.Join(ProjectRoot(), name)
-		}
-		if info, err := os.Stat(hub); err != nil || !info.IsDir() {
-			return nil, fmt.Errorf("no project %q under %s (create it with (create-project %q))", name, ProjectRoot(), name)
-		}
-		target := hub
-		candidates := []string{"main"}
-		if def, err := gitRun(hub, "symbolic-ref", "--short", "HEAD"); err == nil {
-			candidates = append(candidates, def)
-		}
-		for _, c := range candidates {
-			if info, err := os.Stat(filepath.Join(hub, c)); err == nil && info.IsDir() {
-				target = filepath.Join(hub, c)
-				break
+			if err := setProjectText(cg, id, text); err != nil {
+				return nil, err
 			}
-		}
-		if target == hub {
-			if subs, err := os.ReadDir(hub); err == nil {
-				for _, s := range subs {
-					if s.IsDir() && !strings.HasPrefix(s.Name(), ".") {
-						target = filepath.Join(hub, s.Name())
-						break
-					}
-				}
-			}
-		}
-		if err := os.Chdir(target); err != nil {
-			return nil, err
-		}
-		return String(target), nil
-	}))
-
-	Register("create-project", "create a bare-repo project hub under the project root and cd in", CommandMeta{Command: true, MinArgs: 1, MaxArgs: 2, Usage: "name [clone-url]"})
-	env.Set("create-project", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
-		if len(args) < 1 || len(args) > 2 {
-			return nil, errors.New("create-project expects 1 or 2 arguments: (create-project \"name\" [\"clone-url\"])")
-		}
-		name, ok := args[0].(String)
-		if !ok {
-			return nil, errors.New("create-project expects a string name")
-		}
-		url := ""
-		if len(args) == 2 {
-			u, ok := args[1].(String)
+			return true, nil
+		case name == "":
+			rp, ok := currentProject()
 			if !ok {
-				return nil, errors.New("create-project expects a string clone url")
+				return nil, errors.New("not inside a project")
 			}
-			url = string(u)
+			return projectDict(rp), nil
 		}
-		hub := filepath.Join(ProjectRoot(), string(name))
-		if _, err := os.Stat(hub); err == nil {
-			return nil, fmt.Errorf("project %q already exists at %s", string(name), hub)
+		if rp, ok := registeredProjectByName(name); ok && rp.Path == "" {
+			return projectDict(rp), nil
 		}
-		if err := os.MkdirAll(hub, 0755); err != nil {
+		if _, ok := registeredProjectByName(name); ok {
+			return enterHub(name)
+		}
+		if info, err := os.Stat(filepath.Join(ProjectRoot(), name)); err == nil && info.IsDir() {
+			return enterHub(name)
+		}
+		cg, err := registryGraphWrite()
+		if err != nil {
 			return nil, err
 		}
-		bare := filepath.Join(hub, ".bare")
-		branch := "main"
-		if url == "" {
-			if _, err := gitRun(hub, "init", "--bare", "-b", "main", bare); err != nil {
-				return nil, err
-			}
-		} else {
-			if _, err := gitRun(hub, "clone", "--bare", url, bare); err != nil {
-				return nil, err
-			}
-			if _, err := gitRun(bare, "config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
-				return nil, err
-			}
-			if def, err := gitRun(bare, "symbolic-ref", "--short", "HEAD"); err == nil && def != "" {
-				branch = def
-			}
-			if _, err := gitRun(bare, "fetch", "origin"); err != nil {
-				return nil, err
-			}
-		}
-		if err := hubGitFile(hub); err != nil {
+		id, err := registerProjectNode(cg, name, "", "")
+		if err != nil {
 			return nil, err
 		}
-		path := filepath.Join(hub, branch)
-		wtArgs := []string{"worktree", "add", path, branch}
-		if url == "" {
-			wtArgs = []string{"worktree", "add", "--orphan", "-b", branch, path}
-		}
-		if _, err := gitRun(hub, wtArgs...); err != nil {
-			return nil, err
-		}
-		if err := os.Chdir(path); err != nil {
-			return nil, err
-		}
-		if cg, err := registryGraphWrite(); err == nil {
-			_, _ = registerProjectNode(cg, string(name), hub, "hub")
-		}
-		return String(path), nil
+		return Integer(id), nil
 	}))
 
 	Register("trees", "list the current project's worktrees as rows", CommandMeta{Command: true})

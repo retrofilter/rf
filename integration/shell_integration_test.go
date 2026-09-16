@@ -791,7 +791,7 @@ func TestProjectTrees(t *testing.T) {
 	t.Parallel()
 	s := startShell(t, t.TempDir())
 
-	s.sendLine("create-project demo")
+	s.sendLine("project --init demo")
 	s.expect(`\(demo ~/src/demo/main\) \$ `)
 
 	s.clear()

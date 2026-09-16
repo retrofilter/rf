@@ -132,17 +132,20 @@ func TestProjectLifecycle(t *testing.T) {
 		}
 
 		mainPath := filepath.Join(home, "src", "demo", "main")
-		if got := mustEval(`(create-project "demo")`); got != String(mainPath) {
-			t.Fatalf("create-project returned %v, want %q", got, mainPath)
+		if got := mustEval(`(project "demo" {:init #t})`); got != String(mainPath) {
+			t.Fatalf("project --init returned %v, want %q", got, mainPath)
 		}
 		if cwd() != mainPath {
-			t.Fatalf("create-project should cd into %s, cwd is %s", mainPath, cwd())
+			t.Fatalf("project --init should cd into %s, cwd is %s", mainPath, cwd())
 		}
 		if _, err := os.Stat(filepath.Join(home, "src", "demo", ".bare")); err != nil {
 			t.Fatal("bare repo missing:", err)
 		}
-		if _, err := evalExpr(`(create-project "demo")`, ev, env); err == nil {
+		if _, err := evalExpr(`(project "demo" {:init #t})`, ev, env); err == nil {
 			t.Fatal("re-creating an existing project should error")
+		}
+		if _, err := evalExpr(`(project "demo" {:init #t :clone "x"})`, ev, env); err == nil {
+			t.Fatal("--init with --clone should error as exclusive")
 		}
 
 		featPath := filepath.Join(home, "src", "demo", "feat")

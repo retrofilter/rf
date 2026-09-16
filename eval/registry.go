@@ -20,8 +20,9 @@ import (
 type RegisteredProject struct {
 	NodeID uint32
 	Name   string
-	Path   string
+	Path   string // "" for a project with no backing directory
 	Kind   string // "hub" (trees are siblings of .bare) or "dir" (trees in .trees/)
+	Text   string // markdown notes, edited with project -e
 }
 
 const projectRegistryTTL = 5 * time.Second
@@ -92,10 +93,11 @@ func registeredProjects() []RegisteredProject {
 				name, _ := props["name"].(string)
 				path, _ := props["path"].(string)
 				kind, _ := props["kind"].(string)
-				if name == "" || path == "" {
+				text, _ := props["text"].(string)
+				if name == "" {
 					continue
 				}
-				entries = append(entries, RegisteredProject{NodeID: node.ID, Name: name, Path: path, Kind: kind})
+				entries = append(entries, RegisteredProject{NodeID: node.ID, Name: name, Path: path, Kind: kind, Text: text})
 			}
 		}
 	}
@@ -117,7 +119,7 @@ func registeredProjectFor(dir string) (RegisteredProject, bool) {
 	var best RegisteredProject
 	found := false
 	for _, rp := range registeredProjects() {
-		if dir != rp.Path && !strings.HasPrefix(dir, rp.Path+string(filepath.Separator)) {
+		if rp.Path == "" || (dir != rp.Path && !strings.HasPrefix(dir, rp.Path+string(filepath.Separator))) {
 			continue
 		}
 		if !found || len(rp.Path) > len(best.Path) {
@@ -130,6 +132,15 @@ func registeredProjectFor(dir string) (RegisteredProject, bool) {
 func registeredProjectByName(name string) (RegisteredProject, bool) {
 	for _, rp := range registeredProjects() {
 		if rp.Name == name {
+			return rp, true
+		}
+	}
+	return RegisteredProject{}, false
+}
+
+func registeredProjectByNodeID(id uint32) (RegisteredProject, bool) {
+	for _, rp := range registeredProjects() {
+		if rp.NodeID == id {
 			return rp, true
 		}
 	}
@@ -157,14 +168,17 @@ func registerProjectNode(cg *core.Graph, name, path, kind string) (uint32, error
 	} else if len(existing) > 0 {
 		return 0, fmt.Errorf("project %q is already registered", name)
 	}
-	if existing, err := projectNodesByAttrs(cg, map[string]interface{}{"path": path}); err != nil {
-		return 0, err
-	} else if len(existing) > 0 {
-		return 0, fmt.Errorf("%s is already registered as a project", path)
+	props := map[string]interface{}{"type": "project", "name": name}
+	if path != "" {
+		if existing, err := projectNodesByAttrs(cg, map[string]interface{}{"path": path}); err != nil {
+			return 0, err
+		} else if len(existing) > 0 {
+			return 0, fmt.Errorf("%s is already registered as a project", path)
+		}
+		props["path"] = path
+		props["kind"] = kind
 	}
-	propsJSON, err := json.Marshal(map[string]interface{}{
-		"type": "project", "name": name, "path": path, "kind": kind,
-	})
+	propsJSON, err := json.Marshal(props)
 	if err != nil {
 		return 0, err
 	}
@@ -199,16 +213,19 @@ func canonicalProjectPath(path string) (string, error) {
 	return abs, nil
 }
 
-func registryBuiltins(env *Environment, gs *core.GraphStore) {
+func registryBuiltins(env *Environment, ev *Evaluator, gs *core.GraphStore) {
 	projectRegMu.Lock()
 	projectRegStore = gs
 	projectRegAt = time.Time{}
 	projectRegMu.Unlock()
 
-	Register("register-project", "register a directory (cwd by default) as a project", CommandMeta{
+	Register("register-project", "register a directory (cwd by default) as a project (user-only)", CommandMeta{
 		Command: true, MaxArgs: 1, Usage: "[path]",
 		Options: []Option{{Long: "name", Short: "n", Kind: OptionString, Placeholder: "NAME", Doc: "project name (default: the directory's base name)"}}})
 	env.Set("register-project", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
+		if err := ev.RequireUser("register-project"); err != nil {
+			return nil, err
+		}
 		pos, opts, err := ParseOptions("register-project", args)
 		if err != nil {
 			return nil, err
@@ -246,10 +263,13 @@ func registryBuiltins(env *Environment, gs *core.GraphStore) {
 		return Integer(id), nil
 	}))
 
-	Register("unregister-project", "remove a project from the registry", CommandMeta{
+	Register("unregister-project", "remove a project from the registry (user-only)", CommandMeta{
 		Command: true, MinArgs: 1, MaxArgs: 1, Usage: "name",
 		Options: []Option{{Long: "tasks", Kind: OptionBool, Doc: "delete the project's tasks too"}}})
 	env.Set("unregister-project", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
+		if err := ev.RequireUser("unregister-project"); err != nil {
+			return nil, err
+		}
 		pos, opts, err := ParseOptions("unregister-project", args)
 		if err != nil {
 			return nil, err

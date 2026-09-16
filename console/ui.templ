@@ -221,7 +221,9 @@ templ errorText(msg string) {
 // pseudo-group's header, which has no directory to start in, and the "..."
 // overflow row (data-ov-more), which expands its project's hidden tasks
 // instead. Task rows past overviewTaskCap — open and done combined — ship
-// hidden so expansion is client-only.
+// hidden so expansion is client-only. A project's notes (markdown edited
+// with `project -e`) sit between its header and its tasks; the HTML comes
+// from goldmark with raw HTML disabled, so templ.Raw is safe on user text.
 templ overviewList(projects []OverviewProject) {
 	<div class="ov-box">
 		if len(projects) == 0 {
@@ -232,9 +234,16 @@ templ overviewList(projects []OverviewProject) {
 				if p.ID != 0 {
 					<div class="ov-row ov-phead" data-ov-kind="project" data-ov-id={ strconv.Itoa(int(p.ID)) }>
 						<span class="ov-pname">{ p.Name }</span>
-						<span class="ov-ppath">{ dirLabel(p.Path) }</span>
+						if p.Path != "" {
+							<span class="ov-ppath">{ dirLabel(p.Path) }</span>
+						}
 						<span class="ov-count">{ fmtOpenCount(len(p.Tasks)) }</span>
 					</div>
+					if p.Text != "" {
+						<div class="ov-notes">
+							@templ.Raw(p.Text)
+						</div>
+					}
 				} else {
 					<div class="ov-phead ov-unfiled">
 						<span class="ov-pname">unfiled</span>
