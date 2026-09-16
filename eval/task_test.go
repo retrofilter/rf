@@ -240,7 +240,12 @@ func TestTaskLifecycle(t *testing.T) {
 
 		require.NoError(t, os.Chdir(home))
 		mustEval(`(task "global" "chore")`)
-		require.Equal(t, []string{"global chore"}, taskTexts(mustEval(`(tasks)`)))
+		everywhere := mustEval(`(tasks)`).([]Value)
+		require.ElementsMatch(t, []string{"global chore", "fix the flaky test"}, taskTexts(everywhere))
+		for _, r := range everywhere {
+			require.Contains(t, r.(Dictionary), "project")
+		}
+		require.Equal(t, []string{"fix the flaky test"}, taskTexts(mustEval(`(tasks {:project "proj"})`)))
 		require.NoError(t, os.Chdir(dir))
 		require.Equal(t, []string{"fix the flaky test"}, taskTexts(mustEval(`(tasks)`)))
 

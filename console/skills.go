@@ -33,10 +33,12 @@ is the normal way to retire one):
 
     rf -e '(task {:delete 42})'
 
-List open tasks here / everywhere / unblocked only:
+List open tasks here (all of them outside a project) / everywhere /
+one project's / unblocked only:
 
     rf -e '(tasks)'
     rf -e '(tasks {:all})'
+    rf -e '(tasks {:project "name"})'
     rf -e '(tasks {:ready})'
 
 More: file under another project with (task "..." {:project "name"});

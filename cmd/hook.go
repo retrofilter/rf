@@ -105,7 +105,7 @@ func sessionStartContext(w io.Writer, cwd string) {
 	}
 	rows, _ := result.([]eval.Value)
 
-	scope := "here (no registered project; tasks file globally)"
+	scope := "across all projects"
 	if dir, err := os.Getwd(); err == nil {
 		if name, _, ok := eval.FindProject(dir); ok {
 			scope = fmt.Sprintf("for project %q", name)

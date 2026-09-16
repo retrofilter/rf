@@ -8,7 +8,7 @@ func TestTaskRoundTrip(t *testing.T) {
 	// Unquoted words join, like remember; the id comes back.
 	s.sendLine("task fix the flaky resize test")
 	s.sendLine("tasks")
-	s.expect(`id\s+status\s+age\s+text`)
+	s.expect(`id\s+status\s+age\s+project\s+text`)
 	s.expect(`1\s+open\s+\d+s\s+fix the flaky resize test`)
 	s.clear()
 	s.sendLine("task -c 1")

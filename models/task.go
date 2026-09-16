@@ -6,11 +6,10 @@ import (
 
 // TaskQuery filters SearchTasks. Zero values mean "no filter".
 type TaskQuery struct {
-	Project    string // only tasks whose `for` edge targets the project node with this name
-	Unattached bool   // only tasks with no `for` edge (global tasks)
-	Status     string // "open" or "done"
-	Ready      bool   // only tasks with no open blocker
-	Limit      int    // newest N (0 = all)
+	Project string // only tasks whose `for` edge targets the project node with this name
+	Status  string // "open" or "done"
+	Ready   bool   // only tasks with no open blocker
+	Limit   int    // newest N (0 = all)
 }
 
 // TaskRow is a task node joined with the name of the project it is filed
@@ -40,9 +39,6 @@ func SearchTasks(db *sqlx.DB, graphID uint32, q TaskQuery) ([]TaskRow, error) {
 	if q.Project != "" {
 		query += ` AND json_extract(p.properties, '$.name') = ?`
 		args = append(args, q.Project)
-	}
-	if q.Unattached {
-		query += ` AND f.id IS NULL`
 	}
 	if q.Ready {
 		query += ` AND NOT EXISTS (

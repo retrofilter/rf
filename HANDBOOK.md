@@ -74,7 +74,7 @@ in as the last argument.
 | similar | ✓ | rank items by semantic similarity to a query |
 | sort-by | ✓ | sort rows by a column, or items by themselves — ls \| sort-by size -r |
 | task |  | file a task for the current project |
-| tasks |  | list the current project's open tasks as rows |
+| tasks |  | list open tasks, by default scoped to the current project |
 | top-incoming |  | nodes ranked by incoming edge count, as rows with a count column |
 | top-outgoing |  | nodes ranked by outgoing edge count, as rows with a count column |
 | tree |  | cd into a project worktree, creating it if missing |
@@ -1128,7 +1128,7 @@ scheme: (task text ... [{:project NAME :blocks ID :complete ID :delete ID}])
 ### tasks
 
 ```
-tasks — list the current project's open tasks as rows
+tasks — list open tasks, by default scoped to the current project
 
 usage:  tasks [flags]
 scheme: (tasks [{:all #t :project NAME :done #t :ready #t :limit N}])

@@ -66,8 +66,8 @@ func TestSessionStartContext(t *testing.T) {
 	buf.Reset()
 	sessionStartContext(&buf, home)
 	out = buf.String()
-	if !strings.Contains(out, "no open tasks here") {
-		t.Fatalf("expected an empty count outside the project:\n%s", out)
+	if !strings.Contains(out, "1 open task across all projects") {
+		t.Fatalf("expected the count across all projects:\n%s", out)
 	}
 	if !strings.Contains(out, "/task skill") {
 		t.Fatalf("pointer to the skill should always print:\n%s", out)

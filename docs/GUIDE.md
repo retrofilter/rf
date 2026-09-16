@@ -217,11 +217,13 @@ built on them:
   can file and read tasks under a project, but never create, enter, or
   edit one. `tree` and `trees` manage git worktrees.
 - **Tasks** — `task some text` files a task under the current project,
-  `tasks` lists open ones (`--ready` for unblocked, `--all` for every
-  project), `task -c id` closes, `task -d id` deletes one
-  outright. Tasks are graph nodes with `for` and
-  `blocks` edges, so the model can read and file them too — and so can a
-  Claude Code session, via `rf -e '(task "…")'`.
+  `tasks` lists open ones — the current project's inside one, every
+  project's elsewhere (`-p name` for a named project from anywhere,
+  `--all` for everything even inside a project, `--ready` for
+  unblocked), `task -c id` closes, `task -d id` deletes one outright.
+  Tasks are graph nodes with `for` and `blocks` edges, so the model can
+  read and file them too — and so can a Claude Code session, via
+  `rf -e '(task "…")'`.
 - **History** — `history [pattern]` searches every line ever typed, by
   directory, mode, or project. **Messages** — `messages [pattern]` searches
   chat transcripts, including Claude Code's when the hooks are installed.

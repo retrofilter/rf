@@ -207,7 +207,7 @@ func taskBuiltins(env *Environment, ev *Evaluator) {
 		return Integer(id), nil
 	}))
 
-	Register("tasks", "list the current project's open tasks as rows", CommandMeta{
+	Register("tasks", "list open tasks, by default scoped to the current project", CommandMeta{
 		Command: true,
 		Options: []Option{
 			{Long: "all", Short: "a", Kind: OptionBool, Doc: "every project (adds a project column)"},
@@ -243,7 +243,7 @@ func taskBuiltins(env *Environment, ev *Evaluator) {
 			if name, _, ok := FindProject(cwd); ok {
 				q.Project = name
 			} else {
-				q.Unattached = true
+				all = true
 			}
 		}
 		rows, err := cg.SearchTasks(q)
