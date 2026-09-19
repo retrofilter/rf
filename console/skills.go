@@ -51,6 +51,22 @@ the inner double quotes: rf -e "(task \"don't forget the retry\")".
 Habits: file follow-ups you notice but don't act on, complete tasks as
 you finish the work they describe, and check (tasks) when starting work
 in a project.
+
+## Notes and references
+
+Notes are longer markdown documents in the same graph, named by slug
+and filed under a project like tasks. Read, list, and write them:
+
+    rf -e '(note "shopping-list")'
+    rf -e '(notes)'
+    rf -e '(note "shopping-list" {:text "# Shopping list\n\n- eggs"})'
+
+The :text may be a whole document with YAML front matter (name:,
+project:, and any extra keys, which become node properties). Refer to
+anything in the graph with one spelling — task:42, note:slug,
+project:name, or #42 — and write [[task:42]] or [[note:slug]] inside a
+note or task text to link it; rf -e '(node "task:42")' fetches any of
+them with its edges (node is Scheme-only: it shadows the node binary).
 `
 
 // ClaudeSkillsDir is where rf installs Claude Code skills.

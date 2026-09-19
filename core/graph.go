@@ -63,6 +63,11 @@ func (g *Graph) SearchTasks(q models.TaskQuery) ([]models.TaskRow, error) {
 	return models.SearchTasks(g.db, g.ID, q)
 }
 
+// SearchNotes lists this graph's note nodes matching q, newest update first.
+func (g *Graph) SearchNotes(q models.NoteQuery) ([]models.NoteRow, error) {
+	return models.SearchNotes(g.db, g.ID, q)
+}
+
 // OpenTaskCounts counts open tasks per project node id.
 func (g *Graph) OpenTaskCounts() (map[uint32]int, error) {
 	return models.OpenTaskCountsByProject(g.db, g.ID)

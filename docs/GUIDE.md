@@ -196,9 +196,9 @@ Everything lives in `~/.rf/main.db` (SQLite; `help backups` covers
 copying it safely). The database holds property graphs, and the rest is
 built on them:
 
-- **Notes** — `remember some text` saves a note, `recall query` searches
-  them (full-text plus embeddings; `graph-embeddings` set to `#f` opts
-  down to full-text only).
+- **Memories** — `remember some text` saves a one-line memory, `recall
+  query` searches them (full-text plus embeddings; `graph-embeddings`
+  set to `#f` opts down to full-text only).
 - **Graph** — `nodes [query]`, `edges`, `graphs`, `graph`, `paths`,
   `create-graph`, `delete-node` … the raw surface. `neighbors id` walks
   one hop out (rows with a direction column), `top-incoming` /
@@ -224,6 +224,30 @@ built on them:
   Tasks are graph nodes with `for` and `blocks` edges, so the model can
   read and file them too — and so can a Claude Code session, via
   `rf -e '(task "…")'`.
+- **Notes** — longer markdown documents with a name. `note shopping-list`
+  prints the note, or opens `$EDITOR` to create it when there is none
+  (`-e` edits an existing one); the buffer starts
+  with a YAML front matter block (`name:`, `project:`, and any keys you
+  add, which become the node's properties) and the body follows. a note
+  prints as its document (pipe or redirect it like any lines —
+  `note shopping-list > shopping.md`), `note -t "text" name` sets it without an
+  editor (a body, or a whole front-matter document — the agent's
+  spelling), `note -d name` deletes it. `notes` lists them the way
+  `tasks` does: the current project's inside one, everything elsewhere,
+  `-p name` and `--all` to widen. A new note files under the cwd's
+  project; editing `project:` in the front matter re-files it, editing
+  `name:` renames it. Names are slugs — `note "Shopping List"` makes
+  `shopping-list`.
+- **References** — one spelling names any node: `task:42`, `note:slug`,
+  `project:name`, or `#42` for anything by id. `(node "task:42")`
+  fetches it, with its edges (every node row carries its own `ref`;
+  `node` is parens-only, since it shadows the node binary). Inside a
+  note's body or a task's text, `[[ref]]` links — `[[task:42]]`,
+  `[[project:rf]]`, `[[shopping-list]]` (bare means a note),
+  `[[shopping-list|an alias]]` — become `links` edges when the text is saved, so the graph
+  view draws them and `neighbors` walks them. A link to a note that
+  doesn't exist yet is kept as text and reported as `unresolved`; the
+  edge appears when that note is created.
 - **History** — `history [pattern]` searches every line ever typed, by
   directory, mode, or project. **Messages** — `messages [pattern]` searches
   chat transcripts, including Claude Code's when the hooks are installed.

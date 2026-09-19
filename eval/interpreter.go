@@ -337,6 +337,7 @@ func NewEvaluatorWithEnvironment(db *sqlx.DB, gs *core.GraphStore) *Evaluator {
 		graphBuiltins(global, ev, gs)
 		registryBuiltins(global, ev, gs)
 		taskBuiltins(global, ev)
+		noteBuiltins(global, ev)
 	}
 	execBuiltin(global, ev)
 	envBuiltin(global, ev)

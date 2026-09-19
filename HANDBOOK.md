@@ -56,6 +56,8 @@ in as the last argument.
 | messages |  | search chat messages across rf and Claude Code sessions |
 | neighbors |  | a node's neighboring nodes as rows with a direction column |
 | nodes |  | list a graph's nodes as rows; a query full-text searches them ranked |
+| note |  | show a named markdown note, or open $EDITOR to create it |
+| notes |  | list notes as rows, by default scoped to the current project |
 | parse-json | ✓ | parse JSON (a file, stream, or lines) into Scheme values — fetch url \| parse-json |
 | paths |  | the PATH entries as {:path} rows |
 | persist |  | promote a definition to the prelude via a sub-agent |
@@ -340,7 +342,7 @@ presence, callable with parens in any mode; `help <name>` at the prompt.
 | nan? | whether a number is +nan.0 |
 | negative? | whether a number is less than zero |
 | newline | write a newline: (newline [port]) |
-| node | fetch a node by id as a structured row with its edges attached |
+| node | fetch a node by id or reference (task:ID, note:SLUG, project:NAME, #ID) as a row with its edges attached |
 | not | true for false or nil, false for everything else |
 | null-environment | the R5RS syntax-only environment (the shared global env) |
 | null? | true when the value is an empty list |
@@ -920,6 +922,35 @@ scheme: (nodes [query] [{:type TYPE :graph NAME :limit N}])
   -g, --graph NAME  target the named graph
   -n, --limit N     max rows returned
   -h, --help        this help
+```
+
+### note
+
+```
+note — show a named markdown note, or open $EDITOR to create it
+
+usage:  note name [flags]
+scheme: (note name [{:edit #t :text MARKDOWN :project NAME :delete #t}])
+
+  -e, --edit           open the note in $EDITOR (a missing note opens there without the flag)
+  -t, --text MARKDOWN  set the note's document without an editor (a body, or ---front matter--- plus body)
+  -p, --project NAME   file under the named project ("" unfiles; default: the cwd's on creation)
+  -d, --delete         delete the note outright (permanent)
+  -h, --help           this help
+```
+
+### notes
+
+```
+notes — list notes as rows, by default scoped to the current project
+
+usage:  notes [flags]
+scheme: (notes [{:all #t :project NAME :limit N}])
+
+  -a, --all           every project (adds a project column)
+  -p, --project NAME  the named project's notes
+  -n, --limit N       most recently edited N notes
+  -h, --help          this help
 ```
 
 ### parse-json

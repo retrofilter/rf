@@ -386,36 +386,40 @@ func graphBuiltins(env *Environment, ev *Evaluator, gs *core.GraphStore) {
 		return Integer(id), nil
 	}))
 
-	env.SetBuiltin("node", "fetch a node by id as a structured row with its edges attached", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
+	env.SetBuiltin("node", "fetch a node by id or reference (task:ID, note:SLUG, project:NAME, #ID) as a row with its edges attached", BuiltinFunc(func(args []Value, env *Environment) (Value, error) {
 		var cg *core.Graph
 		var err error
-		var nodeID uint32
-		var ok bool
-		if len(args) == 1 {
+		var key Value
+		switch len(args) {
+		case 1:
 			cg, err = resolveGraphArg(nil, env, gs)
-			if err != nil {
-				return nil, err
-			}
-			nodeID, ok = asNumber(args[0])
-			if !ok {
-				return nil, errors.New("node expects a node id as number")
-			}
-		} else if len(args) == 2 {
+			key = args[0]
+		case 2:
 			cg, err = resolveGraphArg(args[0], env, gs)
+			key = args[1]
+		default:
+			return nil, errors.New("node expects 1 or 2 arguments: (node id-or-ref) or (node graph id-or-ref)")
+		}
+		if err != nil {
+			return nil, err
+		}
+		var node *models.Node
+		if nodeID, ok := asNumber(key); ok {
+			if node, err = cg.GetNode(context.Background(), nodeID); err != nil {
+				return nil, fmt.Errorf("node not found: %w", err)
+			}
+		} else if s, ok := asString(key); ok {
+			ref, err := ParseRef(s)
 			if err != nil {
 				return nil, err
 			}
-			nodeID, ok = asNumber(args[1])
-			if !ok {
-				return nil, errors.New("second argument must be a number (node-id)")
+			if node, err = resolveRef(cg, ref); err != nil {
+				return nil, err
 			}
 		} else {
-			return nil, errors.New("node expects 1 or 2 arguments: (node id) or (node graph id)")
+			return nil, errors.New("node expects a node id or a reference string (task:ID, note:SLUG, project:NAME, #ID)")
 		}
-		node, err := cg.GetNode(context.Background(), nodeID)
-		if err != nil {
-			return nil, fmt.Errorf("node not found: %w", err)
-		}
+		nodeID := node.ID
 		row := nodeRow(node)
 		es, err := cg.GetNodeEdges(context.Background(), nodeID)
 		if err != nil {
@@ -943,6 +947,7 @@ func nodeRow(node *models.Node) Dictionary {
 		dict["type"] = String("")
 	}
 	dict["created_at"] = String(node.CreatedAt.Format(time.RFC3339))
+	dict["ref"] = String(RefString(node))
 	props := make(Dictionary)
 	for k, v := range node.FormattedProperties() {
 		switch val := v.(type) {

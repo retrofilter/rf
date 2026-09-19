@@ -561,6 +561,7 @@ var commandArgCompleters = map[string]func() []string{
 	"tree":        eval.TreeNames,
 	"delete-tree": eval.TreeNames,
 	"project":     eval.ProjectNames,
+	"note":        eval.NoteNames,
 }
 
 func completeCommandArg(text string) (readline.Completions, bool) {

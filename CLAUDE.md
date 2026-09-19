@@ -120,8 +120,13 @@ SQLite is `modernc.org/sqlite` (pure Go): FTS5 built in, no cgo, no build tags.
     graph comes from the `default-graph` binding); `registry.go` — the project
     registry (`register-project`/`unregister-project`: projects as `project` nodes
     in the default graph, consulted registry-first by `FindProject`); `task.go` —
-    tasks as graph nodes (`task`/`tasks`/`task -c`, `for`/`blocks` edges — see
-    TASKS.md); `history.go`, `messages.go` (`messages` — search the unified
+    tasks as graph nodes (`task`/`tasks`/`task -c`, `for`/`blocks` edges);
+    `note.go` — notes as graph nodes (`note`/`notes`: named markdown
+    documents with YAML front matter, `$EDITOR`-edited, `for` edges);
+    `ref.go` — the **reference grammar** (`task:ID`/`note:SLUG`/`project:NAME`/`#ID`,
+    `[[ref]]` wikilinks in note bodies and task text → `links` edges,
+    `node` resolves any ref) — `docs/NOTES.md` is the design record;
+    `history.go`, `messages.go` (`messages` — search the unified
     chat-message corpus, rf + synced Claude Code; the candidate feed for
     `messages -d . -n 2000 | hybrid "q"`), `project.go` (`project` — enter/create/describe, `--clone`/`--init` hubs,
     `-e`/`--text` markdown notes on the node's `text` property, shown on the

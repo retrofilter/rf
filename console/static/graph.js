@@ -22,7 +22,8 @@
      each theme — One Light on #FAFAFA, One Dark on #282C34 — in this exact
      order, validated CVD-safe for adjacent pairs against their surface
      (dataviz six-checks; red and green must not sit adjacent). The core
-     vocabulary keeps stable slots (project=blue, task=amber); further types
+     vocabulary keeps stable slots (project=blue, task=amber, note=purple);
+     further types
      take the remaining slots alphabetically, and past six fold into gray. */
   const THEMES = {
     light: {
@@ -46,7 +47,7 @@
   };
   const theme = () => THEMES[document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'];
 
-  const PINNED = ['project', 'task'];
+  const PINNED = ['project', 'task', 'note'];
 
   const REPULSION = 1600;
   const CUTOFF2 = 260 * 260;

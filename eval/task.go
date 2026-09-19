@@ -204,6 +204,9 @@ func taskBuiltins(env *Environment, ev *Evaluator) {
 				return nil, err
 			}
 		}
+		if _, err := syncLinks(cg, id, props["text"].(string)); err != nil {
+			return nil, err
+		}
 		return Integer(id), nil
 	}))
 
